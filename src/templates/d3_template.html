@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Import Graph Visualization</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body { 
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        #graph {
+            width: 100vw;
+            height: 100vh;
+            background: #fafafa;
+        }
+        .node {
+            cursor: pointer;
+            opacity: 1;
+            transition: opacity 0.2s;
+        }
+        .node.filtered {
+            opacity: 0;
+            pointer-events: none;
+        }
+        .node circle {
+            stroke: #333;
+            stroke-width: 1.5px;
+            fill: #e3f2fd;
+            border-radius: 5px;
+        }
+        .node text {
+            font: 10px sans-serif;
+            pointer-events: none;
+            fill: #333;
+        }
+        .node.invalid circle {
+            fill: #ffebee;
+            stroke: #c62828;
+            stroke-width: 2px;
+        }
+        .node.circular circle {
+            fill: #fff3e0;
+            stroke: #ef6c00;
+            stroke-width: 2px;
+        }
+        .link {
+            stroke: #999;
+            stroke-opacity: 0.6;
+            stroke-width: 1px;
+            fill: none;
+            marker-end: url(#arrow);
+            opacity: 1;
+            transition: opacity 0.2s;
+        }
+        .link.filtered {
+            opacity: 0;
+            pointer-events: none;
+        }
+        .link.invalid {
+            stroke: #c62828;
+            stroke-width: 2px;
+        }
+        .link.circular {
+            stroke: #ef6c00;
+            stroke-width: 2px;
+        }
+        #arrow {
+            fill: #999;
+        }
+        #arrow.invalid {
+            fill: #c62828;
+        }
+        #arrow.circular {
+            fill: #ef6c00;
+        }
+        .legend {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            z-index: 1000;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+            cursor: pointer;
+        }
+        .legend-item:hover {
+            opacity: 0.8;
+        }
+        .legend-checkbox {
+            margin-right: 8px;
+        }
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            border: 1.5px solid #333;
+        }
+        .legend-normal {
+            background: #e3f2fd;
+        }
+        .legend-invalid {
+            background: #ffebee;
+            border-color: #c62828;
+            border-width: 2px;
+        }
+        .legend-circular {
+            background: #fff3e0;
+            border-color: #ef6c00;
+            border-width: 2px;
+        }
+        .tooltip {
+            position: absolute;
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            pointer-events: auto;
+            opacity: 0;
+            transition: opacity 0.2s;
+            max-width: 500px;
+            font-size: 12px;
+            z-index: 1000;
+        }
+        .tooltip h4 {
+            margin: 0 0 8px 0;
+            font-size: 14px;
+            color: #333;
+        }
+        .tooltip .path {
+            font-family: monospace;
+            padding: 8px;
+            background: #f8f8f8;
+            border-radius: 4px;
+            margin: 4px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid #eee;
+        }
+        .tooltip .path:hover {
+            background: #f0f0f0;
+        }
+        .tooltip .path-text {
+            margin-right: 8px;
+        }
+        .tooltip .copy-icon {
+            color: #666;
+        }
+        .tooltip .globe-icon {
+            color: #0366d6;
+        }
+        .tooltip .icons {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: 8px;
+            user-select: none;
+        }
+        .tooltip .icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            font-size: 16px;
+            background: #f5f5f5;
+        }
+        .tooltip .icon:hover {
+            background-color: #e0e0e0;
+        }
+        .tooltip .copy-icon {
+            color: #666;
+        }
+        .tooltip .globe-icon {
+            color: #0366d6;
+        }
+        .tooltip .path {
+            font-family: monospace;
+            padding: 8px;
+            background: #f8f8f8;
+            border-radius: 4px;
+            margin: 4px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid #eee;
+        }
+        .tooltip .path:hover {
+            background: #f0f0f0;
+        }
+        .tooltip .path-text {
+            margin-right: 8px;
+        }
+        .tooltip ul {
+            margin: 4px 0;
+            padding-left: 20px;
+            list-style-type: none;
+        }
+        .tooltip li {
+            margin: 4px 0;
+        }
+        .tooltip .error {
+            color: #c62828;
+        }
+        .tooltip .warning {
+            color: #ef6c00;
+        }
+        .tooltip.pinned {
+            pointer-events: auto;
+        }
+        
+        /* SVG icon for PyPI */
+        .pypi-icon-svg {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="graph"></div>
+    <div class="legend">
+        <h3 style="margin-top: 0; margin-bottom: 10px;">Legend</h3>
+        <label class="legend-item">
+            <input type="checkbox" class="legend-checkbox" data-type="normal" checked>
+            <div class="legend-color legend-normal"></div>
+            <span>Normal Import</span>
+        </label>
+        <label class="legend-item">
+            <input type="checkbox" class="legend-checkbox" data-type="invalid" checked>
+            <div class="legend-color legend-invalid"></div>
+            <span>Invalid Import</span>
+        </label>
+        <label class="legend-item">
+            <input type="checkbox" class="legend-checkbox" data-type="circular" checked>
+            <div class="legend-color legend-circular"></div>
+            <span>Circular Import</span>
+        </label>
+    </div>
+    <div class="tooltip"></div>
+    <!-- SVG icon for PyPI -->
+    <svg class="pypi-icon-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" fill="currentColor"/>
+    </svg>
+    <script>
+        /*DATA_PLACEHOLDER*/
+        
+        // Path utility functions
+        const Path = {
+            basename: function(path) {
+                return path.split(/[\\/]/).pop();
+            },
+            escapePath: function(path) {
+                // Replace backslashes with double backslashes for proper escaping in JS strings
+                return path.replace(/\\/g, '\\\\');
+            },
+            getPackageName: function(path) {
+                // Extract the package name from an import path
+                // Remove any version specifiers or path components
+                const base = path.split(/[\\/]/).pop().split('.')[0];
+                return base.split(/[<>=~]/)[0].trim();
+            },
+            isProjectImport: function(path) {
+                // Check if this is a project import (not starting with src/ or tests/)
+                return !path.startsWith('src\\') && !path.startsWith('tests\\') && 
+                       !path.startsWith('src/') && !path.startsWith('tests/');
+            }
+        };
+        
+        // Filter state
+        const filters = {
+            normal: true,
+            invalid: true,
+            circular: true
+        };
+
+        // Filter update function
+        function updateFilters() {
+            // Update nodes
+            node.classed("filtered", d => {
+                if (d.invalid === "true" && !filters.invalid) return true;
+                if (d.circular === "true" && !filters.circular) return true;
+                if (d.invalid !== "true" && d.circular !== "true" && !filters.normal) return true;
+                return false;
+            });
+
+            // Update links
+            link.classed("filtered", d => {
+                const source = graph.nodes[d.source.id];
+                const target = graph.nodes[d.target.id];
+                
+                // Check if either source or target is filtered
+                if (source.invalid === "true" && !filters.invalid) return true;
+                if (source.circular === "true" && !filters.circular) return true;
+                if (source.invalid !== "true" && source.circular !== "true" && !filters.normal) return true;
+                
+                if (target.invalid === "true" && !filters.invalid) return true;
+                if (target.circular === "true" && !filters.circular) return true;
+                if (target.invalid !== "true" && target.circular !== "true" && !filters.normal) return true;
+                
+                return false;
+            });
+        }
+
+        // Add event listeners to checkboxes
+        d3.selectAll(".legend-checkbox").on("change", function() {
+            const type = this.dataset.type;
+            filters[type] = this.checked;
+            updateFilters();
+        });
+
+        function openPyPI(packageName) {
+            window.open(`https://pypi.org/project/${packageName}/`, '_blank');
+        }
+
+        // Set up the SVG
+        const svg = d3.select("#graph")
+            .append("svg")
+            .attr("width", "100%")
+            .attr("height", "100%");
+            
+        // Add zoom behavior
+        const g = svg.append("g");
+        svg.call(d3.zoom()
+            .scaleExtent([0.1, 4])
+            .on("zoom", (event) => {
+                g.attr("transform", event.transform);
+            }));
+            
+        // Define arrow markers
+        svg.append("defs").selectAll("marker")
+            .data(["default", "invalid", "circular"])
+            .join("marker")
+            .attr("id", d => `arrow-${d}`)
+            .attr("viewBox", "0 -5 10 10")
+            .attr("refX", 15)
+            .attr("refY", 0)
+            .attr("markerWidth", 6)
+            .attr("markerHeight", 6)
+            .attr("orient", "auto")
+            .append("path")
+            .attr("d", "M0,-5L10,0L0,5")
+            .attr("class", d => d);
+
+        // Set up tooltip
+        const tooltip = d3.select(".tooltip");
+        let pinnedNode = null;
+
+        async function copyToClipboard(text) {
+            try {
+                await navigator.clipboard.writeText(text);
+            } catch (err) {
+                console.error('Failed to copy text: ', err);
+            }
+        }
+
+        function showTooltip(event, d) {
+            if (event.type === "click") {
+                // If clicking the same node, do nothing
+                if (pinnedNode === d) return;
+                pinnedNode = d;
+                tooltip.classed("pinned", true);
+            } else if (pinnedNode) {
+                // If a node is pinned and we're hovering a different node, do nothing
+                return;
+            }
+
+            let content = `<h4>${d.name}</h4>`;
+            content += `<div class="path" onclick="copyToClipboard('${d.full_path.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}')">${d.full_path}<span class="copy-icon"></span></div>`;
+            let hasContent = false;
+
+            // Show invalid imports
+            if (d.invalid === "true" && d.invalid_imports && d.invalid_imports.length > 0) {
+                content += `<div class="error">Invalid Imports:</div><ul>`;
+                d.invalid_imports.forEach(imp => {
+                    const isProjectImport = Path.isProjectImport(imp);
+                    const packageName = Path.getPackageName(imp);
+                    content += `<li class="error">
+                        <div class="path">
+                            <span class="path-text">${imp}</span>
+                            <div class="icons">
+                                <div class="icon copy-icon" onclick="event.stopPropagation(); copyToClipboard('${imp.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}')" title="Copy to clipboard">&#128203;</div>
+                                ${isProjectImport ? `<div class="icon globe-icon" onclick="event.stopPropagation(); openPyPI('${packageName}')" title="View ${packageName} on PyPI">&#127760;</div>` : ''}
+                            </div>
+                        </div>
+                    </li>`;
+                });
+                content += '</ul>';
+                hasContent = true;
+            }
+
+            // Show circular imports
+            if (d.circular === "true" && d.circular_chains && d.circular_chains.length > 0) {
+                content += `<div class="warning">Circular Import Chains:</div><ul>`;
+                d.circular_chains.forEach(chain => {
+                    content += `<li class="warning">Chain: <div style="display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px;">`;
+                    chain.forEach((node, index) => {
+                        if (index > 0) content += `<span style="color: #ef6c00; font-size: 16px;">&#8594;</span>`;
+                        content += `<div class="path">
+                            <span class="path-text" onclick="copyToClipboard('${node.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}')">${Path.basename(node)}</span>
+                            <div class="icons">
+                                <div class="icon copy-icon" onclick="event.stopPropagation(); copyToClipboard('${node.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}')" title="Copy to clipboard">&#128203;</div>
+                            </div>
+                        </div>`;
+                    });
+                    content += '</div></li>';
+                });
+                content += '</ul>';
+                hasContent = true;
+            }
+
+            if (hasContent || event.type === "click") {
+                tooltip
+                    .html(content)
+                    .style("left", (event.pageX + 15) + "px")
+                    .style("top", (event.pageY) + "px")
+                    .style("opacity", 1);
+            }
+        }
+
+        function hideTooltip(event) {
+            // Only hide if we're not pinned or if we clicked outside a node
+            if (!tooltip.classed("pinned") || (event.type === "click" && !event.target.closest(".node"))) {
+                tooltip.style("opacity", 0);
+                tooltip.classed("pinned", false);
+                pinnedNode = null;
+            }
+        }
+
+        // Set up the simulation
+        const simulation = d3.forceSimulation(graph.nodes)
+            .force("link", d3.forceLink(graph.links)
+                .id(d => d.id)
+                .distance(100))
+            .force("charge", d3.forceManyBody()
+                .strength(-300))
+            .force("center", d3.forceCenter(
+                window.innerWidth / 2,
+                window.innerHeight / 2
+            ))
+            .force("collision", d3.forceCollide().radius(30));
+
+        // Add links
+        const link = g.append("g")
+            .selectAll("path")
+            .data(graph.links)
+            .join("path")
+            .attr("class", d => {
+                let classes = ["link"];
+                if (d.invalid === "true") classes.push("invalid");
+                if (d.circular === "true") classes.push("circular");
+                return classes.join(" ");
+            })
+            .attr("marker-end", d => {
+                if (d.invalid === "true") return "url(#arrow-invalid)";
+                if (d.circular === "true") return "url(#arrow-circular)";
+                return "url(#arrow-default)";
+            });
+
+        // Add nodes
+        const node = g.append("g")
+            .selectAll(".node")
+            .data(graph.nodes)
+            .join("g")
+            .attr("class", d => {
+                let classes = ["node"];
+                if (d.invalid === "true") classes.push("invalid");
+                if (d.circular === "true") classes.push("circular");
+                return classes.join(" ");
+            })
+            .on("mouseover", showTooltip)
+            .on("mouseout", hideTooltip)
+            .on("click", showTooltip)
+            .call(d3.drag()
+                .on("start", dragstarted)
+                .on("drag", dragged)
+                .on("end", dragended));
+
+        // Add circles to nodes
+        node.append("circle")
+            .attr("r", 5);
+
+        // Add labels to nodes
+        node.append("text")
+            .attr("dx", 8)
+            .attr("dy", ".35em")
+            .text(d => d.name);
+
+        // Handle clicks outside nodes to unpin tooltip
+        svg.on("click", hideTooltip);
+
+        // Update positions on tick
+        simulation.on("tick", () => {
+            link.attr("d", d => {
+                const dx = d.target.x - d.source.x;
+                const dy = d.target.y - d.source.y;
+                const dr = Math.sqrt(dx * dx + dy * dy);
+                return `M${d.source.x},${d.source.y}A${dr},${dr} 0 0,1 ${d.target.x},${d.target.y}`;
+            });
+
+            node.attr("transform", d => `translate(${d.x},${d.y})`);
+        });
+
+        // Drag functions
+        function dragstarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+
+        function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+
+        // Function to find all circular chains involving a node
+        function findCircularChains(node) {
+            const chains = [];
+            const visited = new Set();
+            
+            function findChains(currentNode, currentChain) {
+                const currentId = currentNode.id;
+                if (visited.has(currentId)) {
+                    // If we've found our starting node, we have a cycle
+                    if (currentId === node.id && currentChain.length > 1) {
+                        chains.push([...currentChain.map(n => n.full_path)]);
+                    }
+                    return;
+                }
+                
+                visited.add(currentId);
+                currentChain.push(currentNode);
+                
+                // Find all outgoing links from this node
+                const outgoingLinks = graph.links.filter(l => l.source.id === currentId);
+                for (const link of outgoingLinks) {
+                    const targetNode = graph.nodes[link.target.id];
+                    findChains(targetNode, [...currentChain]);
+                }
+                
+                visited.delete(currentId);
+            }
+            
+            findChains(node, []);
+            return chains;
+        }
+    </script>
+</body>
+</html> 
