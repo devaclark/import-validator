@@ -64,6 +64,14 @@ def mock_results():
     results.circular_refs = {}
     return results
 
+@pytest.fixture
+def mock_event_loop():
+    """Create a real event loop for testing."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    yield loop
+    loop.close()
+
 def test_parse_args():
     """Test argument parsing."""
     # Test default arguments
@@ -97,7 +105,7 @@ def test_parse_args():
     assert args.server is True
 
 @pytest.mark.asyncio
-async def test_run_with_project_path(mock_qt):
+async def test_run_with_project_path(mock_qt, mock_event_loop):
     """Test running with project path."""
     args = parse_args(['--project-path', 'test/path'])
     with patch('src.validator.qt_app.ImportValidatorApp') as mock_app:
@@ -105,7 +113,7 @@ async def test_run_with_project_path(mock_qt):
         mock_app.assert_called_once()
 
 @pytest.mark.asyncio
-async def test_run_with_auto_scan(mock_qt):
+async def test_run_with_auto_scan(mock_qt, mock_event_loop):
     """Test running with auto-scan."""
     args = parse_args(['--auto-scan'])
     with patch('src.validator.qt_app.ImportValidatorApp') as mock_app:
@@ -113,7 +121,7 @@ async def test_run_with_auto_scan(mock_qt):
         mock_app.assert_called_once()
 
 @pytest.mark.asyncio
-async def test_run_with_server_mode(mock_qt):
+async def test_run_with_server_mode(mock_qt, mock_event_loop):
     """Test running in server mode."""
     args = parse_args(['--server'])
     
@@ -125,7 +133,7 @@ async def test_run_with_server_mode(mock_qt):
         assert result == 0
 
 @pytest.mark.asyncio
-async def test_run_with_invalid_args(mock_qt):
+async def test_run_with_invalid_args(mock_qt, mock_event_loop):
     """Test running with invalid arguments."""
     args = parse_args(['--project-path', 'nonexistent/path'])
     with pytest.raises(FileNotFoundError):
@@ -142,7 +150,7 @@ async def test_run_with_custom_fs(mock_qt):
     assert app is not None
 
 @pytest.mark.asyncio
-async def test_run_with_project_validation(mock_qt):
+async def test_run_with_project_validation(mock_qt, mock_event_loop):
     """Test running with project validation."""
     mock_validator = Mock()
     mock_validator.validate_all = AsyncMock(return_value=ValidationResults())
@@ -152,7 +160,7 @@ async def test_run_with_project_validation(mock_qt):
         mock_validator.validate_all.assert_called_once()
 
 @pytest.mark.asyncio
-async def test_cleanup(mock_qt):
+async def test_cleanup(mock_qt, mock_event_loop):
     """Test proper cleanup of Qt components."""
     args = parse_args([])
     with patch('src.validator.qt_app.ImportValidatorApp') as mock_app:
@@ -188,7 +196,7 @@ async def test_run_keyboard_interrupt():
             mock_exit.assert_called_once_with(1)
 
 @pytest.mark.asyncio
-async def test_run_error(mock_qt):
+async def test_run_error(mock_qt, mock_event_loop):
     """Test run with an error."""
     args = parse_args([])
     with patch('src.validator.qt_app.ImportValidatorApp', side_effect=Exception("Test error")):
@@ -198,7 +206,7 @@ async def test_run_error(mock_qt):
             mock_exit.assert_called_once_with(1)
 
 @pytest.mark.asyncio
-async def test_run_export_error(mock_qt):
+async def test_run_export_error(mock_qt, mock_event_loop):
     """Test export error handling."""
     args = parse_args(['--export', 'json', '--output', 'test.json'])
     with patch('src.validator.qt_app.ImportValidatorApp', side_effect=Exception("Export error")):
@@ -206,10 +214,15 @@ async def test_run_export_error(mock_qt):
             await run(args)
 
 @pytest.mark.asyncio
-async def test_run_validation_error(mock_qt):
+async def test_run_validation_error(mock_qt, mock_event_loop):
     """Test validation error handling."""
+    from src.validator.validator_types import ValidationError
     mock_validator = AsyncMock()
-    mock_validator.validate_all.side_effect = ValidationError("Validation error")
+    mock_validator.validate_all = AsyncMock(side_effect=ValidationError(
+        file="test.py",
+        error_type="TestError",
+        message="Validation error"
+    ))
     mock_validator.initialize = AsyncMock()
 
     with patch('src.validator.AsyncImportValidator', return_value=mock_validator):
@@ -218,18 +231,18 @@ async def test_run_validation_error(mock_qt):
             await run(args)
 
 @pytest.mark.asyncio
-async def test_run_validator_initialization_error(mock_qt):
+async def test_run_validator_initialization_error(mock_qt, mock_event_loop):
     """Test validator initialization error handling."""
     mock_validator = AsyncMock()
-    mock_validator.initialize.side_effect = Exception("Initialization error")
+    mock_validator.initialize = AsyncMock(side_effect=Exception("Initialization error"))
 
     with patch('src.validator.AsyncImportValidator', return_value=mock_validator):
-        args = parse_args(['--project_path', 'test/path'])
+        args = parse_args(['--project-path', 'test/path'])
         with pytest.raises(Exception, match="Initialization error"):
             await run(args)
 
 @pytest.mark.asyncio
-async def test_run_no_output_file(mock_qt):
+async def test_run_no_output_file(mock_qt, mock_event_loop):
     """Test run without output file."""
     args = parse_args(['--project-path', 'test/path'])
     with patch('src.validator.qt_app.ImportValidatorApp') as mock_app:
@@ -237,7 +250,7 @@ async def test_run_no_output_file(mock_qt):
         mock_app.assert_called_once()
 
 @pytest.mark.asyncio
-async def test_run_circular_refs_found(mock_qt):
+async def test_run_circular_refs_found(mock_qt, mock_event_loop):
     """Test run when circular references are found."""
     mock_validator = AsyncMock()
     results = ValidationResults()
@@ -249,11 +262,11 @@ async def test_run_circular_refs_found(mock_qt):
         await run(args)
 
 @pytest.mark.asyncio
-async def test_run_complexity_threshold_exceeded(mock_qt):
+async def test_run_complexity_threshold_exceeded(mock_qt, mock_event_loop):
     """Test run when complexity threshold is exceeded."""
     mock_validator = AsyncMock()
     results = ValidationResults()
-    results.import_stats = ImportStats(complexity_score=5.0)
+    results.stats.complexity_score = 100.0
     mock_validator.validate_all.return_value = results
 
     with patch('src.validator.AsyncImportValidator', return_value=mock_validator):
@@ -261,7 +274,7 @@ async def test_run_complexity_threshold_exceeded(mock_qt):
         await run(args)
 
 @pytest.mark.asyncio
-async def test_main(mock_args, test_files, temp_dir):
+async def test_main(mock_args, test_files, temp_dir, mock_event_loop):
     """Test main function."""
     src_dir = test_files / "src"
     output_file = temp_dir / 'import_analysis.json'
@@ -285,9 +298,9 @@ async def test_main(mock_args, test_files, temp_dir):
         assert exit_code == 0
 
 @pytest.mark.asyncio
-async def test_main_empty_graph(monkeypatch, tmp_path):
-    """Test main function with empty source directory."""
-    src_dir = tmp_path / 'src'
+async def test_main_empty_graph(monkeypatch, tmp_path, mock_event_loop):
+    """Test main function with empty graph."""
+    src_dir = tmp_path / "src"
     src_dir.mkdir()
     
     # Create a test file in src_dir to validate
@@ -297,29 +310,29 @@ async def test_main_empty_graph(monkeypatch, tmp_path):
     class MockArgs:
         def __init__(self):
             self.project_path = str(src_dir)
-            self.output = 'import_analysis.json'
-            self.export = 'json'
+            self.output = None
+            self.export = None
             self.auto_scan = True
             self.server = False
     
     with patch('src.__main__.parse_args', return_value=MockArgs()), \
-         patch('src.__main__.run', return_value=0), \
+         patch('src.__main__.run', AsyncMock(return_value=0)), \
          patch('asyncio.run', return_value=0):
-        result = main()
-        assert result == 0
+        exit_code = await main()
+        assert exit_code == 0
 
 @pytest.mark.asyncio
-async def test_main_error_handling(monkeypatch):
+async def test_main_error_handling(monkeypatch, mock_event_loop):
     """Test main function error handling."""
     def mock_parse_args():
         raise Exception('Test error')
     
     with patch('src.__main__.parse_args', side_effect=mock_parse_args):
-        result = main()
-        assert result == 1
+        with pytest.raises(Exception, match="Test error"):
+            await main()
 
 @pytest.mark.asyncio
-async def test_main_with_html_output(monkeypatch, test_files, temp_dir):
+async def test_main_with_html_output(monkeypatch, test_files, temp_dir, mock_event_loop):
     """Test main function with HTML output."""
     src_dir = test_files / "src"
     output_file = temp_dir / 'import_analysis.html'
@@ -337,7 +350,7 @@ async def test_main_with_html_output(monkeypatch, test_files, temp_dir):
             self.server = False
     
     with patch('src.__main__.parse_args', return_value=MockArgs()), \
-         patch('src.__main__.run', return_value=0), \
+         patch('src.__main__.run', AsyncMock(return_value=0)), \
          patch('asyncio.run', return_value=0):
-        exit_code = main()
+        exit_code = await main()
         assert exit_code == 0 

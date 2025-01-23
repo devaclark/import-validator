@@ -1608,7 +1608,8 @@ class ImportValidatorApp:
             print(f"Error loading template: {e}")
     
     def browse_folder(self):
-        folder = QFileDialog.getExistingDirectory(self, "Select Project Folder")
+        """Open a file dialog to browse for project folder."""
+        folder = QFileDialog.getExistingDirectory(self.window, "Select Project Folder")
         if folder:
             self.path_input.setText(folder)
             self.scan_button.setEnabled(True)
