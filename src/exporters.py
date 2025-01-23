@@ -1,486 +1,313 @@
-"""Export utilities for import validator."""
+"""Export functionality for validation results."""
 import csv
 import json
+from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, List, Protocol, Set
-from .validator_types import (
+from typing import Dict, List, Set
+
+from src.validator.validator_types import (
+    CircularRefs,
+    ExportFormat,
     ImportStats,
     ValidationError,
-    ExportFormat,
-    ImportGraph,
-    CircularRefs
+    ValidationResults
 )
-from .visualization import D3Visualizer
+from src.visualization import create_visualizer
 
 
-class Exporter(Protocol):
-    """Protocol for export implementations."""
+class BaseExporter(ABC):
+    """Base class for exporters."""
     
-    def export(
-        self,
-        stats: ImportStats,
-        import_graph: ImportGraph,
-        invalid_imports: Dict[str, Set[str]],
-        unused_imports: Dict[str, Set[str]],
-        relative_imports: Dict[str, Set[str]],
-        circular_refs: CircularRefs,
-        errors: List[ValidationError],
-        output_file: Path
-    ) -> None:
-        """Export analysis results to a file."""
-        ...
+    @abstractmethod
+    def export(self, results: ValidationResults, output_file: Path, visualize: bool = True) -> None:
+        """Export validation results.
+        
+        Args:
+            results: The validation results to export
+            output_file: Path to save the exported results
+            visualize: Whether to include visualizations in the export
+            
+        Raises:
+            ValueError: If the results cannot be exported
+            IOError: If the output file cannot be written
+            TypeError: If the results object is invalid
+        """
+        raise NotImplementedError("Exporter subclasses must implement export method")
 
 
-class HTMLExporter:
-    """Export results to HTML format with interactive D3.js visualization."""
+class JSONExporter(BaseExporter):
+    """JSON exporter for validation results."""
     
-    def __init__(self):
-        self.d3_visualizer = D3Visualizer()
-        
-    def export(
-        self,
-        stats: ImportStats,
-        import_graph: ImportGraph,
-        invalid_imports: Dict[str, Set[str]],
-        unused_imports: Dict[str, Set[str]],
-        relative_imports: Dict[str, Set[str]],
-        circular_refs: CircularRefs,
-        errors: List[ValidationError],
-        output_file: Path
-    ) -> None:
-        """Export analysis results to HTML with interactive visualization."""
-        # Convert circular_refs from Dict[str, List[List[str]]] to Set[tuple[str, str]]
-        circular_edges = set()
-        for cycles in circular_refs.values():
-            for cycle in cycles:
-                for i in range(len(cycle) - 1):
-                    circular_edges.add((cycle[i], cycle[i + 1]))
-                # Add edge from last to first to complete the cycle
-                if cycle:
-                    circular_edges.add((cycle[-1], cycle[0]))
-        
-        # Create visualization
-        viz_file = output_file.with_suffix('.viz.html')
-        self.d3_visualizer.visualize(
-            import_graph=import_graph,
-            invalid_imports=invalid_imports,
-            circular_refs=circular_edges,
-            output_file=viz_file
-        )
-        
-        # Create HTML report
-        html_content = [
-            "<!DOCTYPE html>",
-            "<html>",
-            "<head>",
-            "    <title>Import Analysis Report</title>",
-            "    <style>",
-            "        body { font-family: Arial, sans-serif; margin: 20px; }",
-            "        h1, h2 { color: #333; }",
-            "        table { border-collapse: collapse; margin: 10px 0; }",
-            "        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }",
-            "        th { background-color: #f5f5f5; }",
-            "        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }",
-            "        .stat-card { background: #f9f9f9; padding: 15px; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }",
-            "        .viz-container { margin: 20px 0; }",
-            "        iframe { border: none; width: 100%; height: 800px; }",
-            "    </style>",
-            "</head>",
-            "<body>",
-            "    <h1>Import Analysis Report</h1>",
-            "",
-            "    <div class='viz-container'>",
-            "        <h2>Import Graph Visualization</h2>",
-            f"        <iframe src='{viz_file.name}'></iframe>",
-            "    </div>",
-            "",
-            "    <h2>Summary</h2>",
-            "    <div class='stats'>",
-            f"        <div class='stat-card'><strong>Total Imports:</strong> {stats.total_imports}</div>",
-            f"        <div class='stat-card'><strong>Unique Imports:</strong> {stats.unique_imports}</div>",
-            f"        <div class='stat-card'><strong>Complexity Score:</strong> {stats.complexity_score:.2f}</div>",
-            f"        <div class='stat-card'><strong>Invalid Imports:</strong> {stats.invalid_imports_count}</div>",
-            f"        <div class='stat-card'><strong>Unused Imports:</strong> {stats.unused_imports_count}</div>",
-            f"        <div class='stat-card'><strong>Relative Imports:</strong> {stats.relative_imports_count}</div>",
-            f"        <div class='stat-card'><strong>Circular References:</strong> {stats.circular_refs_count}</div>",
-            "    </div>",
-            "",
-            "    <h2>Most Common Imports</h2>",
-            "    <table>",
-            "        <tr><th>Module</th><th>Import Count</th></tr>"
-        ]
-        
-        # Add most common imports
-        for module, count in stats.most_common:
-            html_content.append(f"        <tr><td>{module}</td><td>{count}</td></tr>")
-        
-        html_content.extend([
-            "    </table>",
-            "",
-            "    <h2>Files with Most Imports</h2>",
-            "    <table>",
-            "        <tr><th>File</th><th>Import Count</th></tr>"
-        ])
-        
-        # Add files with most imports
-        for file, count in stats.files_with_most_imports:
-            html_content.append(f"        <tr><td>{file}</td><td>{count}</td></tr>")
-        
-        # Add invalid imports section
-        if invalid_imports:
-            html_content.extend([
-                "    </table>",
-                "",
-                "    <h2>Invalid Imports</h2>",
-                "    <table>",
-                "        <tr><th>File</th><th>Invalid Imports</th></tr>"
-            ])
-            for file, imports in invalid_imports.items():
-                html_content.append(f"        <tr><td>{file}</td><td>{', '.join(imports)}</td></tr>")
-        
-        # Add unused imports section
-        if unused_imports:
-            html_content.extend([
-                "    </table>",
-                "",
-                "    <h2>Unused Imports</h2>",
-                "    <table>",
-                "        <tr><th>File</th><th>Unused Imports</th></tr>"
-            ])
-            for file, imports in unused_imports.items():
-                html_content.append(f"        <tr><td>{file}</td><td>{', '.join(imports)}</td></tr>")
-        
-        # Add relative imports section
-        if relative_imports:
-            html_content.extend([
-                "    </table>",
-                "",
-                "    <h2>Relative Imports</h2>",
-                "    <table>",
-                "        <tr><th>File</th><th>Relative Imports</th></tr>"
-            ])
-            for file, imports in relative_imports.items():
-                html_content.append(f"        <tr><td>{file}</td><td>{', '.join(imports)}</td></tr>")
-        
-        # Add circular references section
-        if circular_refs:
-            html_content.extend([
-                "    </table>",
-                "",
-                "    <h2>Circular References</h2>",
-                "    <table>",
-                "        <tr><th>File</th><th>Cycle</th></tr>"
-            ])
-            for file, cycles in circular_refs.items():
-                for cycle in cycles:
-                    html_content.append(f"        <tr><td>{file}</td><td>{' -> '.join(cycle)}</td></tr>")
-        
-        # Add errors section
-        if errors:
-            html_content.extend([
-                "    </table>",
-                "",
-                "    <h2>Errors</h2>",
-                "    <table>",
-                "        <tr><th>File</th><th>Error Type</th><th>Message</th><th>Line</th></tr>"
-            ])
-            for error in errors:
-                line_info = f":{error.line_number}" if error.line_number else ""
-                html_content.append(
-                    f"        <tr><td>{error.file}{line_info}</td><td>{error.error_type}</td>"
-                    f"<td>{error.message}</td><td>{error.line_number or ''}</td></tr>"
-                )
-        
-        html_content.extend([
-            "    </table>",
-            "</body>",
-            "</html>"
-        ])
-        
-        # Write the report
-        output_file.write_text('\n'.join(html_content), encoding='utf-8')
-
-
-class MarkdownExporter:
-    """Export results to Markdown format."""
-    
-    def export(
-        self,
-        stats: ImportStats,
-        import_graph: ImportGraph,
-        invalid_imports: Dict[str, Set[str]],
-        unused_imports: Dict[str, Set[str]],
-        relative_imports: Dict[str, Set[str]],
-        circular_refs: CircularRefs,
-        errors: List[ValidationError],
-        output_file: Path
-    ) -> None:
-        """Export analysis results to Markdown."""
-        lines = [
-            "# Import Analysis Report",
-            "",
-            "## Summary",
-            "",
-            f"- Total imports: {stats.total_imports}",
-            f"- Unique imports: {stats.unique_imports}",
-            f"- Average complexity score: {stats.complexity_score}",
-            f"- Invalid imports: {stats.invalid_imports_count}",
-            f"- Unused imports: {stats.unused_imports_count}",
-            f"- Relative imports: {stats.relative_imports_count}",
-            f"- Circular references: {stats.circular_refs_count}",
-            "",
-            "## Most Common Imports",
-            "",
-            "| Module | Import Count |",
-            "|--------|--------------|"
-        ]
-        
-        # Add most common imports
-        for module, count in stats.most_common:
-            lines.append(f"| {module} | {count} |")
-        
-        # Add files with most imports
-        lines.extend([
-            "",
-            "## Files with Most Imports",
-            "",
-            "| File | Import Count |",
-            "|------|--------------|"
-        ])
-        for file, count in stats.files_with_most_imports:
-            lines.append(f"| {file} | {count} |")
-        
-        # Add invalid imports section
-        if invalid_imports:
-            lines.extend([
-                "",
-                "## Invalid Imports",
-                "",
-                "| File | Invalid Imports |",
-                "|------|----------------|"
-            ])
-            for file, imports in invalid_imports.items():
-                lines.append(f"| {file} | {', '.join(imports)} |")
-        
-        # Add unused imports section
-        if unused_imports:
-            lines.extend([
-                "",
-                "## Unused Imports",
-                "",
-                "| File | Unused Imports |",
-                "|------|----------------|"
-            ])
-            for file, imports in unused_imports.items():
-                lines.append(f"| {file} | {', '.join(imports)} |")
-        
-        # Add relative imports section
-        if relative_imports:
-            lines.extend([
-                "",
-                "## Relative Imports",
-                "",
-                "| File | Relative Imports |",
-                "|------|-----------------|"
-            ])
-            for file, imports in relative_imports.items():
-                lines.append(f"| {file} | {', '.join(imports)} |")
-        
-        # Add circular references section
-        if circular_refs:
-            lines.extend([
-                "",
-                "## Circular References",
-                ""
-            ])
-            for file, cycles in circular_refs.items():
-                lines.extend([
-                    f"### In {file}",
-                    "",
-                    *[f"- {' -> '.join(cycle)}" for cycle in cycles],
-                    ""
-                ])
-        
-        # Add errors section
-        if errors:
-            lines.extend([
-                "",
-                "## Errors",
-                "",
-                "| File | Error Type | Message | Line |",
-                "|------|------------|---------|------|"
-            ])
-            for error in errors:
-                line_info = f":{error.line_number}" if error.line_number else ""
-                lines.append(
-                    f"| {error.file}{line_info} | {error.error_type} | {error.message} | {error.line_number or ''} |"
-                )
-        
-        # Write the report
-        output_file.write_text('\n'.join(lines), encoding='utf-8')
-
-
-class JSONExporter:
-    """Export results to JSON format."""
-    
-    def export(
-        self,
-        stats: ImportStats,
-        import_graph: ImportGraph,
-        invalid_imports: Dict[str, Set[str]],
-        unused_imports: Dict[str, Set[str]],
-        relative_imports: Dict[str, Set[str]],
-        circular_refs: CircularRefs,
-        errors: List[ValidationError],
-        output_file: Path
-    ) -> None:
-        """Export analysis results to JSON."""
+    def export(self, results: ValidationResults, output_file: Path, visualize: bool = True) -> None:
+        """Export validation results to JSON."""
         data = {
             'stats': {
-                'total_imports': stats.total_imports,
-                'unique_imports': stats.unique_imports,
-                'complexity_score': stats.complexity_score,
-                'invalid_imports_count': stats.invalid_imports_count,
-                'unused_imports_count': stats.unused_imports_count,
-                'relative_imports_count': stats.relative_imports_count,
-                'circular_refs_count': stats.circular_refs_count,
-                'most_common': stats.most_common,
-                'files_with_most_imports': stats.files_with_most_imports
+                'total_imports': results.stats.total_imports,
+                'unique_imports': results.stats.unique_imports,
+                'complexity_score': results.stats.complexity_score,
+                'invalid_imports_count': results.stats.invalid_imports_count,
+                'unused_imports_count': results.stats.unused_imports_count,
+                'relative_imports_count': results.stats.relative_imports_count,
+                'circular_refs_count': results.stats.circular_refs_count,
+                'most_common': results.stats.most_common,
+                'files_with_most_imports': results.stats.files_with_most_imports,
+                'total_nodes': results.stats.total_nodes,
+                'total_edges': results.stats.total_edges
             },
-            'import_graph': {
-                source: list(targets)
-                for source, targets in import_graph.items()
-            },
-            'invalid_imports': {
-                source: list(targets)
-                for source, targets in invalid_imports.items()
-            },
-            'unused_imports': {
-                source: list(imports)
-                for source, imports in unused_imports.items()
-            },
-            'relative_imports': {
-                source: list(imports)
-                for source, imports in relative_imports.items()
-            },
-            'circular_refs': circular_refs,
-            'errors': [
+            'import_graph': {k: sorted(list(v)) for k, v in sorted(results.import_graph.items())},
+            'invalid_imports': {k: sorted(list(v)) for k, v in sorted(results.invalid_imports.items())},
+            'unused_imports': {k: sorted(list(v)) for k, v in sorted(results.unused_imports.items())},
+            'relative_imports': {k: sorted(list(v)) for k, v in sorted(results.relative_imports.items())},
+            'circular_refs': {k: sorted(v, key=lambda x: tuple(x)) for k, v in sorted(results.circular_refs.items())},
+            'errors': sorted([
                 {
-                    'file': str(error.file),
+                    'file': str(error.file_path),
                     'error_type': error.error_type,
                     'message': error.message,
                     'line_number': error.line_number,
                     'context': error.context
                 }
-                for error in errors
-            ]
+                for error in results.errors
+            ], key=lambda x: (x['file'], x['line_number'] or 0))
         }
         
-        output_file.write_text(
-            json.dumps(data, indent=2),
-            encoding='utf-8'
-        )
+        # Write JSON file
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=4, default=str)
 
 
-class CSVExporter:
-    """Export results to CSV format."""
+class MarkdownExporter(BaseExporter):
+    """Markdown exporter for validation results."""
     
-    def export(
-        self,
-        stats: ImportStats,
-        import_graph: ImportGraph,
-        invalid_imports: Dict[str, Set[str]],
-        unused_imports: Dict[str, Set[str]],
-        relative_imports: Dict[str, Set[str]],
-        circular_refs: CircularRefs,
-        errors: List[ValidationError],
-        output_file: Path
-    ) -> None:
-        """Export analysis results to CSV."""
+    def export(self, results: ValidationResults, output_file: Path, visualize: bool = True) -> None:
+        """Export validation results to Markdown."""
+        content = [
+            "# Import Analysis Report\n",
+            "## Statistics\n",
+            f"- Total imports: {results.stats.total_imports}",
+            f"- Unique imports: {results.stats.unique_imports}",
+            f"- Complexity score: {results.stats.complexity_score:.2f}",
+            f"- Invalid imports: {results.stats.invalid_imports_count}",
+            f"- Unused imports: {results.stats.unused_imports_count}",
+            f"- Relative imports: {results.stats.relative_imports_count}",
+            f"- Circular references: {results.stats.circular_refs_count}\n",
+            "## Import Graph\n",
+            f"- Total files: {results.stats.total_nodes}",
+            f"- Total dependencies: {results.stats.total_edges}\n",
+            "## Most Common Imports\n",
+            *[f"- {name}: {count}" for name, count in sorted(results.stats.most_common)],
+            "\n## Files with Most Imports\n",
+            *[f"- {file}: {count}" for file, count in sorted(results.stats.files_with_most_imports)],
+            "\n## Invalid Imports\n",
+            *[f"- {file}:\n  - {', '.join(sorted(imports))}" for file, imports in sorted(results.invalid_imports.items())],
+            "\n## Unused Imports\n",
+            *[f"- {file}:\n  - {', '.join(sorted(imports))}" for file, imports in sorted(results.unused_imports.items())],
+            "\n## Relative Imports\n",
+            *[f"- {file}:\n  - {', '.join(sorted(imports))}" for file, imports in sorted(results.relative_imports.items())],
+            "\n## Circular References\n",
+            *[f"- {' -> '.join(chain)}" for chains in results.circular_refs.values() for chain in sorted(chains, key=lambda x: tuple(x))],
+            "\n## Errors\n",
+            *[f"- {error.file_path} (line {error.line_number}): {error.message}" for error in sorted(results.errors, key=lambda x: (x.file_path or '', x.line_number or 0))]
+        ]
+        
+        # Write Markdown file
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(content))
+
+
+class HTMLExporter(BaseExporter):
+    """HTML exporter for validation results."""
+    
+    def export(self, results: ValidationResults, output_file: Path, visualize: bool = True) -> None:
+        """Export results to HTML format."""
+        html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Import Analysis Report</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; }}
+        h1, h2 {{ color: #333; }}
+        .stats {{ background: #f5f5f5; padding: 15px; border-radius: 5px; }}
+        .error {{ color: #c00; }}
+        .warning {{ color: #f90; }}
+    </style>
+</head>
+<body>
+    <h1>Import Analysis Report</h1>
+    
+    <div class="stats">
+        <h2>Statistics</h2>
+        <p>Total Imports: {results.stats.total_imports}</p>
+        <p>Unique Imports: {results.stats.unique_imports}</p>
+        <p>Complexity Score: {results.stats.complexity_score:.1f}</p>
+        <p>Invalid Imports: {results.stats.invalid_imports_count}</p>
+        <p>Unused Imports: {results.stats.unused_imports_count}</p>
+        <p>Relative Imports: {results.stats.relative_imports_count}</p>
+        <p>Circular References: {results.stats.circular_refs_count}</p>
+    </div>
+    
+    <h2>Import Graph Statistics</h2>
+    <p>Total Files: {results.stats.total_nodes}</p>
+    <p>Total Dependencies: {results.stats.total_edges}</p>
+    
+    {self._format_issues(results)}
+</body>
+</html>"""
+        
+        # Ensure output directory exists
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Write HTML file
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write(html)
+        
+        # Create visualization if requested
+        if visualize:
+            viz_file = output_file.parent / f"{output_file.stem}.viz.html"
+            visualizer = create_visualizer(ExportFormat.HTML)
+            visualizer.visualize(
+                results.import_graph,
+                results.invalid_imports,
+                results.circular_refs,
+                viz_file
+            )
+    
+    def _format_issues(self, results: ValidationResults) -> str:
+        """Format validation issues as HTML."""
+        sections = []
+        
+        if results.invalid_imports:
+            sections.append(f"""
+            <h2 class="error">Invalid Imports</h2>
+            <ul>
+            {"".join(f"<li>{file}: {', '.join(imports)}</li>" for file, imports in results.invalid_imports.items())}
+            </ul>""")
+        
+        if results.unused_imports:
+            sections.append(f"""
+            <h2 class="warning">Unused Imports</h2>
+            <ul>
+            {"".join(f"<li>{file}: {', '.join(imports)}</li>" for file, imports in results.unused_imports.items())}
+            </ul>""")
+        
+        if results.relative_imports:
+            sections.append(f"""
+            <h2>Relative Imports</h2>
+            <ul>
+            {"".join(f"<li>{file}: {', '.join(imports)}</li>" for file, imports in results.relative_imports.items())}
+            </ul>""")
+        
+        if results.circular_refs:
+            sections.append(f"""
+            <h2 class="error">Circular References</h2>
+            <ul>
+            {"".join(f"<li>{' -> '.join(chain)}</li>" for chains in results.circular_refs.values() for chain in chains)}
+            </ul>""")
+
+        errors = results.get_all_errors()
+        if errors:
+            sections.append(f"""
+            <h2 class="error">Validation Errors</h2>
+            <ul>
+            {"".join(f"<li>{error.file_path or 'General'}: {error.error_type} - {error.message}</li>" for error in errors)}
+            </ul>""")
+        
+        return "\n".join(sections)
+
+
+class CSVExporter(BaseExporter):
+    """CSV exporter for validation results."""
+    
+    def export(self, results: ValidationResults, output_file: Path, visualize: bool = True) -> None:
+        """Export validation results to CSV files."""
         # Create directory for CSV files
-        output_dir = output_file.parent / output_file.stem
-        output_dir.mkdir(exist_ok=True)
+        csv_dir = output_file.parent / output_file.stem
+        csv_dir.mkdir(exist_ok=True)
         
         # Export stats
-        with open(output_dir / 'stats.csv', 'w', newline='', encoding='utf-8') as f:
+        with open(csv_dir / "stats.csv", 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(['Metric', 'Value'])
-            writer.writerow(['Total Imports', stats.total_imports])
-            writer.writerow(['Unique Imports', stats.unique_imports])
-            writer.writerow(['Complexity Score', stats.complexity_score])
-            writer.writerow(['Invalid Imports', stats.invalid_imports_count])
-            writer.writerow(['Unused Imports', stats.unused_imports_count])
-            writer.writerow(['Relative Imports', stats.relative_imports_count])
-            writer.writerow(['Circular References', stats.circular_refs_count])
+            writer.writerows([
+                ['Total Imports', results.stats.total_imports],
+                ['Unique Imports', results.stats.unique_imports],
+                ['Complexity Score', results.stats.complexity_score],
+                ['Invalid Imports Count', results.stats.invalid_imports_count],
+                ['Unused Imports Count', results.stats.unused_imports_count],
+                ['Relative Imports Count', results.stats.relative_imports_count],
+                ['Circular References Count', results.stats.circular_refs_count],
+                ['Total Nodes', results.stats.total_nodes],
+                ['Total Edges', results.stats.total_edges]
+            ])
         
         # Export most common imports
-        with open(output_dir / 'most_common.csv', 'w', newline='', encoding='utf-8') as f:
+        with open(csv_dir / "most_common.csv", 'w', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(['Module', 'Count'])
-            writer.writerows(stats.most_common)
+            writer.writerow(['Import', 'Count'])
+            writer.writerows(results.stats.most_common)
         
         # Export files with most imports
-        with open(output_dir / 'files_with_most_imports.csv', 'w', newline='', encoding='utf-8') as f:
+        with open(csv_dir / "files_with_most_imports.csv", 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(['File', 'Import Count'])
-            writer.writerows(stats.files_with_most_imports)
+            writer.writerows(results.stats.files_with_most_imports)
         
         # Export invalid imports
-        with open(output_dir / 'invalid_imports.csv', 'w', newline='', encoding='utf-8') as f:
+        with open(csv_dir / "invalid_imports.csv", 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(['File', 'Invalid Import'])
-            for file, imports in invalid_imports.items():
-                for imp in imports:
-                    writer.writerow([file, imp])
+            writer.writerows([
+                [file, imp] for file, imports in results.invalid_imports.items()
+                for imp in imports
+            ])
         
         # Export unused imports
-        with open(output_dir / 'unused_imports.csv', 'w', newline='', encoding='utf-8') as f:
+        with open(csv_dir / "unused_imports.csv", 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(['File', 'Unused Import'])
-            for file, imports in unused_imports.items():
-                for imp in imports:
-                    writer.writerow([file, imp])
+            writer.writerows([
+                [file, imp] for file, imports in results.unused_imports.items()
+                for imp in imports
+            ])
         
         # Export relative imports
-        with open(output_dir / 'relative_imports.csv', 'w', newline='', encoding='utf-8') as f:
+        with open(csv_dir / "relative_imports.csv", 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(['File', 'Relative Import'])
-            for file, imports in relative_imports.items():
-                for imp in imports:
-                    writer.writerow([file, imp])
+            writer.writerows([
+                [file, imp] for file, imports in results.relative_imports.items()
+                for imp in imports
+            ])
         
         # Export circular references
-        with open(output_dir / 'circular_refs.csv', 'w', newline='', encoding='utf-8') as f:
+        with open(csv_dir / "circular_refs.csv", 'w', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(['File', 'Cycle'])
-            for file, cycles in circular_refs.items():
-                for cycle in cycles:
-                    writer.writerow([file, ' -> '.join(cycle)])
+            writer.writerow(['Import Chain'])
+            writer.writerows([
+                [' -> '.join(chain)] for chains in results.circular_refs.values()
+                for chain in chains
+            ])
         
         # Export errors
-        with open(output_dir / 'errors.csv', 'w', newline='', encoding='utf-8') as f:
+        with open(csv_dir / "errors.csv", 'w', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(['File', 'Error Type', 'Message', 'Line Number', 'Context'])
-            for error in errors:
-                writer.writerow([
-                    error.file,
-                    error.error_type,
-                    error.message,
-                    error.line_number or '',
-                    error.context or ''
-                ])
+            writer.writerow(['File', 'Line Number', 'Error Type', 'Message', 'Context'])
+            writer.writerows([
+                [error.file_path, error.line_number, error.error_type, error.message, error.context]
+                for error in results.get_all_errors()
+            ])
 
 
-def create_exporter(format: ExportFormat) -> Exporter:
-    """Factory function to create appropriate exporter."""
-    if format == ExportFormat.MARKDOWN:
-        return MarkdownExporter()
-    elif format == ExportFormat.JSON:
-        return JSONExporter()
-    elif format == ExportFormat.CSV:
-        return CSVExporter()
-    elif format == ExportFormat.HTML:
-        return HTMLExporter()
+def create_exporter(format: ExportFormat) -> BaseExporter:
+    """Create an exporter based on the specified format."""
+    exporters = {
+        ExportFormat.JSON: JSONExporter,
+        ExportFormat.HTML: HTMLExporter,
+        ExportFormat.MARKDOWN: MarkdownExporter,
+        ExportFormat.CSV: CSVExporter
+    }
     
-    else:
-        raise ValueError(f"Unsupported export format: {format}") 
+    if not isinstance(format, ExportFormat):
+        raise ValueError(f"Unsupported export format: {format}")
+    
+    return exporters[format]() 

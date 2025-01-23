@@ -1,9 +1,10 @@
 """Error handling for import validator."""
-from typing import List, Protocol
+from typing import List, Protocol, Dict, Any, runtime_checkable, Optional
 from rich.console import Console
 from .validator_types import ValidationError
 
 
+@runtime_checkable
 class ErrorHandler(Protocol):
     """Protocol for error handlers."""
     
@@ -30,7 +31,7 @@ class ConsoleErrorHandler:
         # Format the error message
         location = f"{error.file}"
         if error.line_number is not None:
-            location += f":{error.line_number}"
+            location += f" (line {error.line_number})"
             
         message = f"[red]{error.error_type}[/red]: {error.message}"
         if error.context:
@@ -57,7 +58,7 @@ class FileErrorHandler:
         # Format the error message
         location = f"{error.file}"
         if error.line_number is not None:
-            location += f":{error.line_number}"
+            location += f" (line {error.line_number})"
             
         message = f"{error.error_type}: {error.message}"
         if error.context:
@@ -86,4 +87,27 @@ class CompositeErrorHandler:
 
     def get_errors(self) -> List[ValidationError]:
         """Get all accumulated errors."""
-        return self.errors.copy() 
+        return self.errors.copy()
+
+
+def format_error(error: ValidationError) -> str:
+    """Format a validation error for display."""
+    location = f"{error.file}"
+    if error.line_number:
+        location += f" (line {error.line_number})"
+    if error.context:
+        location += f" in {error.context}"
+    return f"{location}: {error.message}"
+
+
+def format_error_json(error: ValidationError) -> Dict[str, Any]:
+    """Format a validation error as JSON."""
+    location = f"{error.file}"
+    if error.line_number:
+        location += f" (line {error.line_number})"
+    return {
+        'location': location,
+        'error_type': error.error_type,
+        'message': error.message,
+        'context': error.context
+    } 

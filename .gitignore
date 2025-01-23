@@ -21,7 +21,7 @@ wheels/
 *.egg
 
 # Virtual Environment
-venv/
+*venv/
 env/
 ENV/
 
@@ -34,3 +34,9 @@ ENV/
 # Project specific
 import_analysis.*
 *.viz.html 
+*.validator/*
+*.pytest_cache/*
+*.benchmarks/*
+*htmlcov*
+.coverage
+
