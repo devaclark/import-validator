@@ -4,46 +4,23 @@ import importlib.util
 import logging
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Union, Tuple, Any, AsyncGenerator
+from typing import Dict, List, Optional, Set, Union, Tuple, Any
 import ast
 from collections import defaultdict
 import json
 import networkx as nx
 import re
 import os
-import pkg_resources
-import uuid
+import random
 
-from .constants import TEMPLATES_DIR
 from .async_utils import find_python_files_async, parse_ast_threaded, read_file_async, file_exists_async, get_installed_packages
 from .error_handling import ValidationError
 from .validator_types import ImportUsage, ValidationResults, PathNormalizer, ImportInfo, ImportValidatorConfig, FileStatus, ImportRelationship
 from .file_system import AsyncFileSystem
+from .logging_config import setup_logging
 
-# Set up logging configuration
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-
-# Create logs directory if it doesn't exist
-log_dir = Path("logs")
-log_dir.mkdir(exist_ok=True)
-
-# Create file handler
-file_handler = logging.FileHandler(log_dir / "import_validator.log", mode='w', encoding='utf-8')
-file_handler.setLevel(logging.DEBUG)
-
-# Create console handler
-console_handler = logging.StreamHandler(sys.stdout)
-console_handler.setLevel(logging.INFO)
-
-# Create formatter
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-file_handler.setFormatter(formatter)
-console_handler.setFormatter(formatter)
-
-# Add handlers to logger
-logger.addHandler(file_handler)
-logger.addHandler(console_handler)
+# Set up logging using centralized configuration
+logger = logging.getLogger('validator.core')
 
 # Known module-to-package mappings
 MODULE_TO_PACKAGE = {
@@ -52,7 +29,8 @@ MODULE_TO_PACKAGE = {
     'bs4': 'beautifulsoup4',
     'sklearn': 'scikit-learn',
     'cv2': 'opencv-python',
-    'psycopg2': 'psycopg2-binary'
+    'psycopg2': 'psycopg2-binary',
+    'pydantic_settings': 'pydantic-settings'
 }
 
 # Reverse mapping for package-to-module
@@ -62,19 +40,9 @@ PACKAGE_TO_MODULES = {
     'beautifulsoup4': ['bs4'],
     'scikit-learn': ['sklearn'],
     'opencv-python': ['cv2'],
-    'psycopg2-binary': ['psycopg2']
+    'psycopg2-binary': ['psycopg2'],
+    'pydantic-settings': ['pydantic_settings']
 }
-
-class PathEncoder(json.JSONEncoder):
-    """Custom JSON encoder for handling Path objects."""
-    def default(self, obj):
-        if isinstance(obj, Path):
-            return str(obj).replace('\\', '/')
-        return super().default(obj)
-
-def json_dumps(obj) -> str:
-    """Safely convert object to JSON string."""
-    return json.dumps(obj, ensure_ascii=False, cls=PathEncoder)
 
 class FileSystemInterface:
     """Interface for file system operations."""
@@ -141,7 +109,7 @@ class AsyncImportValidator:
         self.config = config
         self.fs = fs or DefaultFileSystem()
         self.logger = logging.getLogger('import_validator')
-        self.trace_id = str(uuid.uuid4())[:8]  # Generate a short trace ID
+        self.trace_id = hex(random.getrandbits(32))[2:10]  # Generate a short trace ID
         self.validation_pass = 0  # Track validation pass number
         
         logger.debug(f"[Trace: {self.trace_id}] Initializing validator instance")
@@ -174,23 +142,37 @@ class AsyncImportValidator:
         self.valid_packages = set()  # Track third-party packages separately
         self.package_to_modules = {}  # Track which modules each package provides
 
-        # First, add all packages from all sources
-        if hasattr(config, 'valid_packages') and config.valid_packages:
-            self.installed_packages.update(config.valid_packages)
-            self.valid_packages.update(config.valid_packages)
-            
-        if hasattr(config, 'requirements') and config.requirements:
-            self.installed_packages.update(config.requirements)
-            self.valid_packages.update(config.requirements)
-            
-        if hasattr(config, 'pyproject_dependencies') and config.pyproject_dependencies:
-            self.installed_packages.update(config.pyproject_dependencies)
-            self.valid_packages.update(config.pyproject_dependencies)
+        # Set source directories
+        self.source_dirs = [self.src_dir]
+        if self.tests_dir:
+            self.source_dirs.append(self.tests_dir)
 
-        # Add all installed packages to valid packages (except stdlib)
-        non_stdlib_packages = self.installed_packages - self.stdlib_modules
-        self.valid_packages.update(non_stdlib_packages)
-        logger.debug(f"Added non-stdlib packages to valid_packages: {non_stdlib_packages}")
+    async def initialize(self) -> None:
+        """Initialize validator by finding Python files and extracting imports."""
+        logger.debug(f"Initializing validator for project: {self.config.base_dir}")
+        
+        # Add packages from all sources
+        if hasattr(self.config, 'valid_packages') and self.config.valid_packages:
+            self.installed_packages.update(self.config.valid_packages)
+            self.valid_packages.update(self.config.valid_packages)
+        if hasattr(self.config, 'requirements') and self.config.requirements:
+            self.installed_packages.update(self.config.requirements)
+            self.valid_packages.update(self.config.requirements)
+        if hasattr(self.config, 'pyproject_dependencies') and self.config.pyproject_dependencies:
+            self.installed_packages.update(self.config.pyproject_dependencies)
+            self.valid_packages.update(self.config.pyproject_dependencies)
+
+        # Add common package prefixes for standard library
+        self.installed_packages.update({
+            'typing', 'collections', 'functools', 'dataclasses',
+            'pathlib', 'unittest', 'logging', 'asyncio', 'abc'
+        })
+
+        # Add module names from our known mappings
+        for module_name, package_name in MODULE_TO_PACKAGE.items():
+            if package_name.lower() in {pkg.lower() for pkg in self.valid_packages}:
+                self.valid_packages.add(module_name)
+                self.installed_packages.add(module_name)
 
         # Build package-to-module mapping by inspecting each package
         for package in list(self.valid_packages):
@@ -249,27 +231,14 @@ class AsyncImportValidator:
                 logger.debug(f"Error inspecting package {package}: {e}")
                 continue
 
-        # Add common package prefixes for standard library
-        self.installed_packages.update({
-            'typing', 'collections', 'functools', 'dataclasses',
-            'pathlib', 'unittest', 'logging', 'asyncio', 'abc'
-        })
-
         logger.debug(f"Initialized with {len(self.valid_packages)} valid packages")
         logger.debug(f"Valid packages: {sorted(self.valid_packages)}")
-        logger.debug(f"Installed packages: {sorted(self.installed_packages)}")
         logger.debug(f"Package to modules mapping: {self.package_to_modules}")
-
-        # Set source directories
-        self.source_dirs = [self.src_dir]
-        if self.tests_dir:
-            self.source_dirs.append(self.tests_dir)
-            
+        
         self.logger.info(f"Initialized validator with base_dir: {self.base_dir}")
         self.logger.info(f"Source directory: {self.src_dir}")
         self.logger.info(f"Tests directory: {self.tests_dir}")
         self.logger.info(f"Installed packages: {len(self.installed_packages)}")
-        self.logger.info(f"Using file system interface: {self.fs.__class__.__name__}")
 
     def get_file_status(self, file_path: str) -> FileStatus:
         """Get detailed status information about a file."""
@@ -454,113 +423,6 @@ class AsyncImportValidator:
             })
             
         return issues
-
-    async def initialize(self) -> None:
-        """Initialize validator by finding Python files and extracting imports."""
-        logger.debug(f"Initializing validator for project: {self.config.base_dir}")
-        
-        # Initialize installed packages with standard library
-        self.installed_packages = set(sys.stdlib_module_names)
-        
-        # Add packages from all sources
-        if self.config.valid_packages:
-            self.installed_packages.update(self.config.valid_packages)
-        if self.config.requirements:
-            self.installed_packages.update(self.config.requirements)
-        if self.config.pyproject_dependencies:
-            self.installed_packages.update(self.config.pyproject_dependencies)
-            
-        logger.debug(f"Initialized validator with {len(self.installed_packages)} packages")
-        
-        # Initialize caches
-        self.import_cache = {}
-        self.ast_cache = {}
-        
-        # Ensure paths are Path objects
-        if isinstance(self.src_dir, str):
-            self.src_dir = Path(self.src_dir)
-        if isinstance(self.tests_dir, str):
-            self.tests_dir = Path(self.tests_dir)
-        if isinstance(self.base_dir, str):
-            self.base_dir = Path(self.base_dir)
-            
-        # Ensure paths are absolute
-        self.src_dir = self.src_dir.resolve()
-        if self.tests_dir:
-            self.tests_dir = self.tests_dir.resolve()
-        self.base_dir = self.base_dir.resolve()
-        
-        logger.debug(f"Using base_dir: {self.base_dir}")
-        logger.debug(f"Using src_dir: {self.src_dir}")
-        logger.debug(f"Using tests_dir: {self.tests_dir}")
-        
-        # Initialize path normalizer
-        self.path_normalizer = PathNormalizer(
-            src_dir=str(self.src_dir),
-            tests_dir=str(self.tests_dir) if self.tests_dir else None,
-            base_dir=str(self.base_dir)
-        )
-        
-        # Track file statuses
-        self.file_statuses: Dict[str, FileStatus] = {}
-        self.missing_files: Set[str] = set()
-        self.invalid_files: Set[str] = set()
-        
-        # Initialize import tracking
-        self.module_definitions = {}
-        self.import_graph = nx.DiGraph()
-        self.import_relationships: Dict[str, ImportRelationship] = {}
-        
-        # Initialize package tracking
-        self.stdlib_modules = set(sys.stdlib_module_names)
-        self.installed_packages = self.stdlib_modules.copy()
-        self.valid_packages = set()  # Track third-party packages separately
-
-        # Add packages from all sources
-        if hasattr(self.config, 'valid_packages') and self.config.valid_packages:
-            self.installed_packages.update(self.config.valid_packages)
-            self.valid_packages.update(self.config.valid_packages)
-        if hasattr(self.config, 'requirements') and self.config.requirements:
-            self.installed_packages.update(self.config.requirements)
-            self.valid_packages.update(self.config.requirements)
-        if hasattr(self.config, 'pyproject_dependencies') and self.config.pyproject_dependencies:
-            self.installed_packages.update(self.config.pyproject_dependencies)
-            self.valid_packages.update(self.config.pyproject_dependencies)
-
-        # Add common package prefixes for standard library
-        self.installed_packages.update({
-            'typing', 'collections', 'functools', 'dataclasses',
-            'pathlib', 'unittest', 'logging', 'asyncio', 'abc'
-        })
-
-        # Try importing each package to find its actual import name
-        for package in list(self.valid_packages):
-            try:
-                module = importlib.import_module(package)
-                # If the module was imported successfully, check if it provides other import names
-                if hasattr(module, '__file__'):
-                    module_dir = os.path.dirname(module.__file__)
-                    # Add the actual import name to installed_packages
-                    import_name = os.path.basename(module_dir)
-                    if import_name != package:
-                        logger.debug(f"Adding import name {import_name} for package {package}")
-                        self.installed_packages.add(import_name)
-                        self.valid_packages.add(import_name)
-            except ImportError:
-                continue
-
-        logger.debug(f"Initialized with {len(self.valid_packages)} valid packages")
-        logger.debug(f"Valid packages: {sorted(self.valid_packages)}")
-
-        # Set source directories
-        self.source_dirs = [self.src_dir]
-        if self.tests_dir:
-            self.source_dirs.append(self.tests_dir)
-            
-        self.logger.info(f"Initialized validator with base_dir: {self.base_dir}")
-        self.logger.info(f"Source directory: {self.src_dir}")
-        self.logger.info(f"Tests directory: {self.tests_dir}")
-        self.logger.info(f"Installed packages: {len(self.installed_packages)}")
 
     async def analyze_imports(self, file_path: Union[str, Path], results: ValidationResults) -> None:
         """Analyze imports in a file.
@@ -1026,6 +888,34 @@ class AsyncImportValidator:
                 
         except (ImportError, AttributeError):
             pass
+            
+        return False
+
+    def _is_valid_import(self, import_name: str) -> bool:
+        """Check if an import is valid."""
+        # Split on dots to get the root package
+        root_package = import_name.split('.')[0].lower()  # Convert to lowercase for comparison
+        
+        # Check if it's a stdlib module
+        if root_package in self.stdlib_modules:
+            return True
+            
+        # Check if it's in valid packages (case insensitive)
+        valid_packages_lower = {pkg.lower() for pkg in self.valid_packages}
+        
+        # Check direct match
+        if root_package in valid_packages_lower:
+            return True
+            
+        # Check module-to-package mapping
+        if root_package in MODULE_TO_PACKAGE:
+            mapped_package = MODULE_TO_PACKAGE[root_package].lower()
+            if mapped_package in valid_packages_lower:
+                return True
+            
+        # Check if it's a local module
+        if self._is_local_module(import_name):
+            return True
             
         return False
 

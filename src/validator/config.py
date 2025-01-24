@@ -5,13 +5,14 @@ from pydantic import Field
 from pydantic_settings import BaseSettings
 import tomli
 from dataclasses import dataclass, field
-import logging
-from .async_utils import file_exists_async, read_file_async
 import os
 import yaml
 import toml
+import logging
+from .logging_config import setup_logging
 
-logger = logging.getLogger(__name__)
+# Set up logging using centralized configuration
+logger = logging.getLogger('validator.config')
 
 @dataclass
 class ImportValidatorConfig:
@@ -95,33 +96,31 @@ class ImportValidatorConfig:
         # Preserve any custom weight factors while ensuring defaults exist
         self.weight_factors = {**default_weight_factors, **self.weight_factors}
 
-    @staticmethod
-    def clean_package_name(package_spec: str) -> str:
-        """Clean package specification to get just the package name.
-        
-        Args:
-            package_spec: Raw package specification (may include version, markers, etc.)
-            
-        Returns:
-            Clean package name
-        """
+    def clean_package_name(self, package_spec: str) -> str:
+        """Clean package name by removing version specifiers and extras."""
         # Remove any trailing comments
         package_spec = package_spec.split('#')[0].strip()
         
-        # Handle environment markers
-        if ';' in package_spec:
-            package_spec = package_spec.split(';')[0].strip()
+        # Handle empty strings
+        if not package_spec:
+            return ''
+            
+        # Remove version specifiers and extras
+        package_name = package_spec.split('[')[0]  # Remove extras
+        package_name = package_name.split('>=')[0]  # Remove >= version
+        package_name = package_name.split('<=')[0]  # Remove <= version
+        package_name = package_name.split('==')[0]  # Remove == version
+        package_name = package_name.split('!=')[0]  # Remove != version
+        package_name = package_name.split('~=')[0]  # Remove ~= version
+        package_name = package_name.split('>')[0]   # Remove > version
+        package_name = package_name.split('<')[0]   # Remove < version
+        package_name = package_name.split('^')[0]   # Remove ^ version (used by poetry)
         
-        # Handle version specifiers
-        for operator in ['>=', '<=', '==', '~=', '>', '<', '=']:
-            if operator in package_spec:
-                package_spec = package_spec.split(operator)[0].strip()
-                break
+        # Clean up any remaining whitespace
+        package_name = package_name.strip()
         
-        # Remove any quotes
-        package_spec = package_spec.strip('"').strip("'")
-        
-        return package_spec.strip()
+        # Preserve original case
+        return package_name
 
     @property
     def requirements(self) -> Set[str]:
@@ -157,8 +156,10 @@ class ImportValidatorConfig:
                 poetry_deps = pyproject_data.get('tool', {}).get('poetry', {}).get('dependencies', {})
                 if isinstance(poetry_deps, dict):
                     packages.update(poetry_deps.keys())
+                    logger.debug(f"Found tool poetry dependencies: {poetry_deps.keys()}")
                 elif isinstance(poetry_deps, list):
                     packages.update(poetry_deps)
+                    logger.debug(f"Found tool poetry dependencies: {poetry_deps}")
                 
                 # Get dev dependencies from poetry dev group
                 dev_deps = pyproject_data.get('tool', {}).get('poetry', {}).get('group', {}).get('dev', {}).get('dependencies', {})
@@ -169,7 +170,7 @@ class ImportValidatorConfig:
                     packages.update(dev_deps)
                     logger.debug(f"Found dev dependencies: {dev_deps}")
                 
-                # Clean package names
+                # Clean package names but preserve case
                 cleaned_packages = {
                     self.clean_package_name(dep)
                     for dep in packages 

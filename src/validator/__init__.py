@@ -1,4 +1,9 @@
 """Validator package."""
+from .logging_config import setup_logging
+
+# Initialize logging when package is imported
+setup_logging()
+
 from .validator import AsyncImportValidator
 from .async_utils import (
     find_python_files_async,
