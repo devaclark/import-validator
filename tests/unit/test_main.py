@@ -8,7 +8,7 @@ from src.__main__ import main, parse_args, run
 from src.validator.validator_types import ValidationResults, ImportStats
 from src.validator import AsyncImportValidator
 from src.validator.config import ImportValidatorConfig
-from src.validator.qt_app import ImportValidatorApp
+from src.app.main_window import ImportValidatorApp
 from src.validator.file_system_interface import FileSystemInterface
 from tests.unit.conftest import MockFileSystem
 
