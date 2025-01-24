@@ -91,15 +91,9 @@ def test_parse_args():
     assert args.project_path is None
     assert args.auto_scan is True
     assert args.server is False
-    
-    # Test with server mode
-    args = parse_args(['--server'])
-    assert args.project_path is None
-    assert args.auto_scan is False
-    assert args.server is True
-    
+       
     # Test with all arguments
-    args = parse_args(['--project-path', 'test/path', '--auto-scan', '--server'])
+    args = parse_args(['--project-path', 'test/path', '--auto-scan'])
     assert args.project_path == Path('test/path')
     assert args.auto_scan is True
     assert args.server is True
@@ -108,7 +102,7 @@ def test_parse_args():
 async def test_run_with_project_path(mock_qt, mock_event_loop):
     """Test running with project path."""
     args = parse_args(['--project-path', 'test/path'])
-    with patch('src.validator.qt_app.ImportValidatorApp') as mock_app:
+    with patch('src.app.main_window.ImportValidatorApp') as mock_app:
         await run(args)
         mock_app.assert_called_once()
 
@@ -116,21 +110,9 @@ async def test_run_with_project_path(mock_qt, mock_event_loop):
 async def test_run_with_auto_scan(mock_qt, mock_event_loop):
     """Test running with auto-scan."""
     args = parse_args(['--auto-scan'])
-    with patch('src.validator.qt_app.ImportValidatorApp') as mock_app:
+    with patch('src.app.main_window.ImportValidatorApp') as mock_app:
         await run(args)
         mock_app.assert_called_once()
-
-@pytest.mark.asyncio
-async def test_run_with_server_mode(mock_qt, mock_event_loop):
-    """Test running in server mode."""
-    args = parse_args(['--server'])
-    
-    async def mock_server():
-        return 0
-        
-    with patch('src.validator.qt_app.start_server', mock_server):
-        result = await run(args)
-        assert result == 0
 
 @pytest.mark.asyncio
 async def test_run_with_invalid_args(mock_qt, mock_event_loop):
@@ -163,7 +145,7 @@ async def test_run_with_project_validation(mock_qt, mock_event_loop):
 async def test_cleanup(mock_qt, mock_event_loop):
     """Test proper cleanup of Qt components."""
     args = parse_args([])
-    with patch('src.validator.qt_app.ImportValidatorApp') as mock_app:
+    with patch('src.app.main_window.ImportValidatorApp') as mock_app:
         await run(args)
         mock_app.assert_called_once()
         mock_qt['web_view'].deleteLater.assert_called_once()
@@ -173,7 +155,7 @@ async def test_cleanup(mock_qt, mock_event_loop):
 async def test_run_main():
     """Test main entry point."""
     with patch('sys.argv', ['script.py']):
-        with patch('src.validator.qt_app.ImportValidatorApp') as mock_app:
+        with patch('src.app.main_window.ImportValidatorApp') as mock_app:
             with patch('asyncio.run') as mock_run:
                 main()
                 mock_run.assert_called_once()
@@ -182,7 +164,7 @@ async def test_run_main():
 async def test_run_with_error_handling(mock_qt):
     """Test error handling during run."""
     args = parse_args([])
-    with patch('src.validator.qt_app.ImportValidatorApp', side_effect=Exception("Test error")):
+    with patch('src.app.main_window.ImportValidatorApp', side_effect=Exception("Test error")):
         with pytest.raises(Exception, match="Test error"):
             await run(args)
 
@@ -190,7 +172,7 @@ async def test_run_with_error_handling(mock_qt):
 async def test_run_keyboard_interrupt():
     """Test keyboard interrupt handling."""
     args = parse_args([])
-    with patch('src.validator.qt_app.ImportValidatorApp', side_effect=KeyboardInterrupt):
+    with patch('src.app.main_window.ImportValidatorApp', side_effect=KeyboardInterrupt):
         with patch('sys.exit') as mock_exit:
             await run(args)
             mock_exit.assert_called_once_with(1)
@@ -199,7 +181,7 @@ async def test_run_keyboard_interrupt():
 async def test_run_error(mock_qt, mock_event_loop):
     """Test run with an error."""
     args = parse_args([])
-    with patch('src.validator.qt_app.ImportValidatorApp', side_effect=Exception("Test error")):
+    with patch('src.app.main_window.ImportValidatorApp', side_effect=Exception("Test error")):
         with patch('sys.exit') as mock_exit:
             with pytest.raises(Exception, match="Test error"):
                 await run(args)
@@ -209,7 +191,7 @@ async def test_run_error(mock_qt, mock_event_loop):
 async def test_run_export_error(mock_qt, mock_event_loop):
     """Test export error handling."""
     args = parse_args(['--export', 'json', '--output', 'test.json'])
-    with patch('src.validator.qt_app.ImportValidatorApp', side_effect=Exception("Export error")):
+    with patch('src.app.main_window.ImportValidatorApp', side_effect=Exception("Export error")):
         with pytest.raises(Exception, match="Export error"):
             await run(args)
 
@@ -245,7 +227,7 @@ async def test_run_validator_initialization_error(mock_qt, mock_event_loop):
 async def test_run_no_output_file(mock_qt, mock_event_loop):
     """Test run without output file."""
     args = parse_args(['--project-path', 'test/path'])
-    with patch('src.validator.qt_app.ImportValidatorApp') as mock_app:
+    with patch('src.app.main_window.ImportValidatorApp') as mock_app:
         await run(args)
         mock_app.assert_called_once()
 

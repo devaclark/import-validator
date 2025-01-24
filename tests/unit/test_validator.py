@@ -20,7 +20,6 @@ import networkx as nx
 import sys
 import logging
 from src.validator.error_handling import ValidationError
-from src.validator.validator import PathEncoder, json_dumps
 from typing import Union, Dict, Set, AsyncGenerator
 from src.validator.file_system_interface import FileSystemInterface
 from tests.unit.conftest import MockFileSystem

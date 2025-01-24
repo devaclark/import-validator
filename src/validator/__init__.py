@@ -15,6 +15,7 @@ from .file_system_interface import FileSystemInterface
 from .default_file_system import DefaultFileSystem
 from .import_visitor import ImportVisitor
 from .package_mappings import MODULE_TO_PACKAGE, PACKAGE_TO_MODULES
+from .async_utils import find_python_files_async, parse_ast_threaded, read_file_async, file_exists_async
 
 __all__ = [
     'AsyncImportValidator',
@@ -30,5 +31,9 @@ __all__ = [
     'DefaultFileSystem',
     'ImportVisitor',
     'MODULE_TO_PACKAGE',
-    'PACKAGE_TO_MODULES'
+    'PACKAGE_TO_MODULES',
+    'find_python_files_async',
+    'parse_ast_threaded',
+    'read_file_async',
+    'file_exists_async'
 ] 
