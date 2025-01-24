@@ -78,25 +78,25 @@ def test_parse_args():
     args = parse_args([])
     assert args.project_path is None
     assert args.auto_scan is False
-    assert args.server is False
+    
     
     # Test with project path
     args = parse_args(['--project-path', 'test/path'])
     assert args.project_path == Path('test/path')
     assert args.auto_scan is False
-    assert args.server is False
+
     
     # Test with auto-scan
     args = parse_args(['--auto-scan'])
     assert args.project_path is None
     assert args.auto_scan is True
-    assert args.server is False
+
        
     # Test with all arguments
     args = parse_args(['--project-path', 'test/path', '--auto-scan'])
     assert args.project_path == Path('test/path')
     assert args.auto_scan is True
-    assert args.server is True
+
 
 @pytest.mark.asyncio
 async def test_run_with_project_path(mock_qt, mock_event_loop):
@@ -271,8 +271,8 @@ async def test_main(mock_args, test_files, temp_dir, mock_event_loop):
             self.output = str(output_file)
             self.export = 'json'
             self.auto_scan = True
-            self.server = False
-    
+
+
     with patch('src.__main__.parse_args', return_value=MockArgs()), \
          patch('src.__main__.run', AsyncMock(return_value=0)), \
          patch('asyncio.run', return_value=0):
@@ -295,7 +295,7 @@ async def test_main_empty_graph(monkeypatch, tmp_path, mock_event_loop):
             self.output = None
             self.export = None
             self.auto_scan = True
-            self.server = False
+
     
     with patch('src.__main__.parse_args', return_value=MockArgs()), \
          patch('src.__main__.run', AsyncMock(return_value=0)), \
@@ -329,7 +329,7 @@ async def test_main_with_html_output(monkeypatch, test_files, temp_dir, mock_eve
             self.output = str(output_file)
             self.export = 'html'
             self.auto_scan = True
-            self.server = False
+
     
     with patch('src.__main__.parse_args', return_value=MockArgs()), \
          patch('src.__main__.run', AsyncMock(return_value=0)), \

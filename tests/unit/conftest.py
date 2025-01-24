@@ -8,7 +8,7 @@ import ast
 os.environ["QT_API"] = "pyqt6"
 
 from src.validator.validator import AsyncImportValidator, FileSystemInterface
-from src.validator.validator_types import ImportValidatorConfig, PathNormalizer
+from src.validator.validator_types import ImportValidatorConfig, PathNormalizer, ValidationResults, ImportStats
 import asyncio
 from typing import Dict, Set, AsyncGenerator, Union, List
 import networkx as nx
@@ -304,7 +304,7 @@ def mock_files(test_files):
     }
 
 @pytest.fixture
-async def mock_validator(tmp_path: Path, mock_qt) -> AsyncMock:
+def mock_validator(tmp_path: Path, mock_qt) -> AsyncMock:
     """Create a mock validator for testing."""
     # Create a mock validator with async methods
     mock = AsyncMock()

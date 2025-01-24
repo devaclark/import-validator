@@ -129,25 +129,6 @@ def mock_file_content(request):
     # Default content - return empty string for other tests
     return ""
 
-@pytest.fixture
-async def mock_validator(tmp_path: Path, mock_qt) -> AsyncMock:
-    """Create a mock validator for testing."""
-    # Create mock validator with async methods
-    mock = AsyncMock()
-    
-    # Setup default behaviors for async methods
-    mock.validate_all = AsyncMock(return_value=ValidationResults())
-    mock.analyze_imports = AsyncMock(return_value=ImportStats())
-    mock.find_module_path = AsyncMock(return_value="test/path")
-    mock.initialize = AsyncMock()
-    mock.cleanup = AsyncMock()
-    
-    # Make it iterable for async for loops
-    mock.__aiter__ = AsyncMock(return_value=mock)
-    mock.__anext__ = AsyncMock(side_effect=StopAsyncIteration)
-    
-    return mock
-
 @pytest.mark.asyncio
 async def test_analyze_imports(mock_validator, tmp_path):
     """Test analyzing imports from a Python file."""
