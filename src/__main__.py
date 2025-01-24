@@ -10,8 +10,8 @@ from src.validator.validator import AsyncImportValidator
 from src.validator.config import ImportValidatorConfig
 from src.exporters import create_exporter
 from src.validator.validator_types import ExportFormat, ValidationResults
-from .validator.qt_app import main as qt_main
-
+from src.app.__main__ import main as qt_main
+from src.validator.logging_config import setup_logging
 logger = logging.getLogger(__name__)
 
 def parse_args(args=None):
@@ -29,15 +29,17 @@ def parse_args(args=None):
 async def run(args):
     """Run the validator."""
     if args.project_path:
-        from .validator.qt_app import main
+        from src.app.__main__ import main
         await main(project_path=args.project_path, auto_scan=args.auto_scan)
     else:
-        from .validator.qt_app import main
+        from src.app.__main__ import main
         await main()
 
 def main():
     """Main entry point."""
     args = parse_args()
+    setup_logging()
+    logger.debug("Starting Import Validator CLI")
     try:
         asyncio.run(run(args))
     except KeyboardInterrupt:

@@ -12,7 +12,9 @@ from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor
 import re
 import fnmatch
+from src.validator.logging_config import setup_logging
 
+# Set up logging using centralized configuration
 logger = logging.getLogger(__name__)
 
 __all__ = [
