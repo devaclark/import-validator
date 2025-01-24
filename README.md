@@ -66,23 +66,6 @@ python -m src --project-path /path/to/your/project --auto-scan
 # Address any new issues
 ```
 
-### 4. Team Collaboration
-
-- Share project structure understanding
-- Document dependencies visually
-- Onboard new team members faster
-- Make architectural decisions with confidence
-
-Example workflow:
-
-```bash
-# Start server for team access
-python -m src --server
-# Share URL with team
-# Collaborate on dependency review
-# Export visualizations for documentation
-```
-
 ## Key Features
 
 🚀 **Modern Interactive Interface**
@@ -133,7 +116,7 @@ poetry install
 
 ## Quick Start Guide
 
-### 1. GUI Mode (Recommended)
+### GUI Mode
 
 The GUI provides the most intuitive way to analyze your project:
 
@@ -143,15 +126,6 @@ python -m src
 
 # Launch with specific project (auto-starts analysis)
 python -m src --project-path /path/to/your/project --auto-scan
-```
-
-### 2. Server Mode (For CI/CD or Remote Access)
-
-Run as a server for web-based visualization:
-
-```bash
-python -m src --server
-# Access via web browser at http://localhost:8080
 ```
 
 ## GUI Interface Guide

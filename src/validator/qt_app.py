@@ -1902,7 +1902,9 @@ class ImportValidatorApp:
             for imp in node_data['imports']:
                 if not imp.startswith('.') and imp not in node_data.get('invalid_imports', []):
                     base_module = imp.split('.')[0]
-                    details = "External Package" if base_module in self.validator.config.valid_packages else "Project Module"
+                    details = "Standard Library" if base_module in self.validator.stdlib_modules else (
+                        "External Package" if base_module in self.validator.config.valid_packages else "Project Module"
+                    )
                     item = QTreeWidgetItem([imp, details])
                     item.setForeground(0, QColor("#9cdcfe"))  # Soft blue
                     std_imports.addChild(item)
@@ -1914,7 +1916,21 @@ class ImportValidatorApp:
             rel_imports = QTreeWidgetItem(["Relative Imports", "Resolution"])
             rel_imports.setForeground(0, QColor("#dcdcaa"))  # Soft gold
             for imp in node_data['relative_imports']:
-                resolution = "Same Directory" if imp.startswith('.') and not imp.startswith('..') else "Parent Directory"
+                # Count leading dots to determine how many levels up
+                dots = len(imp) - len(imp.lstrip('.'))
+                imp_module = imp[dots:]  # Get the module part after the dots
+                
+                if dots == 1 and not imp_module:
+                    resolution = "Current Package"
+                elif dots == 1:
+                    resolution = "Same Package"
+                else:
+                    up_levels = "." * dots
+                    if imp_module:
+                        resolution = f"{up_levels} ({dots} levels up) → {imp_module}"
+                    else:
+                        resolution = f"{up_levels} ({dots} levels up)"
+                
                 item = QTreeWidgetItem([imp, resolution])
                 item.setForeground(0, QColor("#ce9178"))  # Soft orange
                 rel_imports.addChild(item)
@@ -1991,7 +2007,7 @@ class ImportValidatorApp:
     async def export_validation_data(self):
         """Export validation data as JSON."""
         if not self.validator:
-            QMessageBox.warning(self, "Export Data", "No validation data available. Please scan a project first.")
+            QMessageBox.warning(self.window, "Export Data", "No validation data available. Please scan a project first.")
             return
             
         try:
@@ -2006,7 +2022,7 @@ class ImportValidatorApp:
             
             # Get file path for saving
             file_path, _ = QFileDialog.getSaveFileName(
-                self,
+                self.window,
                 "Save Validation Data",
                 str(default_save_path),
                 "JSON Files (*.json)"
@@ -2063,10 +2079,10 @@ class ImportValidatorApp:
             with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump(export_data, f, indent=2, ensure_ascii=False)
             
-            QMessageBox.information(self, "Export Data", f"Validation data exported to:\n{file_path}")
+            QMessageBox.information(self.window, "Export Data", f"Validation data exported to:\n{file_path}")
             
         except Exception as e:
-            QMessageBox.critical(self, "Export Error", f"Failed to export validation data: {str(e)}")
+            QMessageBox.critical(self.window, "Export Error", f"Failed to export validation data: {str(e)}")
 
 async def main(project_path: Optional[str] = None, auto_scan: bool = False):
     """Main entry point for the Qt application."""

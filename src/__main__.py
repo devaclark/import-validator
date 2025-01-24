@@ -6,7 +6,7 @@ from typing import Optional
 import sys
 import argparse
 
-from src.validator.validator import AsyncImportValidator, run_server
+from src.validator.validator import AsyncImportValidator
 from src.validator.config import ImportValidatorConfig
 from src.exporters import create_exporter
 from src.validator.validator_types import ExportFormat, ValidationResults
@@ -19,7 +19,6 @@ def parse_args(args=None):
     parser = argparse.ArgumentParser(description='Import Validator')
     parser.add_argument('--project-path', type=str, help='Path to project to analyze')
     parser.add_argument('--auto-scan', action='store_true', help='Automatically scan the project on startup')
-    parser.add_argument('--server', action='store_true', help='Run in server mode')
     parser.add_argument('--export', type=str, choices=['json', 'csv', 'html', 'md'], help='Export format')
     parser.add_argument('--output', type=str, help='Output file path')
     args = parser.parse_args(args)
@@ -29,11 +28,6 @@ def parse_args(args=None):
 
 async def run(args):
     """Run the validator."""
-    if args.server:
-        from .validator.validator import run_server
-        run_server()
-        return
-
     if args.project_path:
         from .validator.qt_app import main
         await main(project_path=args.project_path, auto_scan=args.auto_scan)

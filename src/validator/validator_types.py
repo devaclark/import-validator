@@ -750,33 +750,4 @@ class ImportRelationship:
     stdlib_imports: Set[str] = field(default_factory=set)  # Standard library imports
     thirdparty_imports: Set[str] = field(default_factory=set)  # Third-party package imports
     local_imports: Set[str] = field(default_factory=set)  # Local project imports
-
-    def add_import(self, target: str, import_type: str):
-        """Add an import relationship."""
-        self.imports.add(target)
-        if import_type == 'stdlib':
-            self.stdlib_imports.add(target)
-        elif import_type == 'thirdparty':
-            self.thirdparty_imports.add(target)
-        elif import_type == 'invalid':
-            self.invalid_imports.add(target)
-        elif import_type == 'relative':
-            self.relative_imports.add(target)
-        else:
-            self.local_imports.add(target)
-
-    def add_circular_ref(self, ref_path: str):
-        """Add a circular reference."""
-        self.circular_refs.add(ref_path)
-
-    def get_stats(self) -> Dict[str, int]:
-        """Get import statistics."""
-        return {
-            'total_imports': len(self.imports),
-            'invalid_imports': len(self.invalid_imports),
-            'relative_imports': len(self.relative_imports),
-            'circular_refs': len(self.circular_refs),
-            'stdlib_imports': len(self.stdlib_imports),
-            'thirdparty_imports': len(self.thirdparty_imports),
-            'local_imports': len(self.local_imports)
-        }
+    
