@@ -351,27 +351,34 @@ class PathNormalizer:
 
     def get_relative_import(self, source: str, target: str) -> str:
         """Get the relative import path from source to target."""
-        source_parts = self.normalize(source).split("/")
-        target_parts = self.normalize(target).split("/")
+        from pathlib import Path
         
-        # Find common prefix
-        common = 0
-        for s, t in zip(source_parts[:-1], target_parts):
-            if s != t:
-                break
-            common += 1
+        # Convert to Path objects and normalize
+        source_path = Path(self.normalize(source))
+        target_path = Path(self.normalize(target))
         
-        # Build relative path
-        up_levels = len(source_parts) - common - 1
-        relative_parts = ["." * (up_levels + 1)]
-        if up_levels == 0:
-            relative_parts = ["."]
+        # Get parent directories
+        source_dir = source_path.parent
+        target_dir = target_path.parent
         
-        relative_parts.extend(target_parts[common:])
-        if relative_parts[-1].endswith(".py"):
-            relative_parts[-1] = relative_parts[-1][:-3]
-            
-        return ".".join(relative_parts)
+        # If files are in the same directory, just return the target module name with a dot
+        if source_dir == target_dir:
+            target_module = target_path.stem  # Remove .py extension
+            return "." + target_module
+        
+        # Calculate relative path from source directory to target
+        try:
+            relative_path = target_path.relative_to(source_dir.parent)
+            return "." * 2 + str(relative_path).replace("\\", ".").replace("/", ".")[:-3]  # Remove .py
+        except ValueError:
+            # If target is not relative to source parent, need to go up more levels
+            common_prefix = Path(os.path.commonpath([str(source_dir), str(target_dir)]))
+            up_levels = len(source_dir.relative_to(common_prefix).parts)
+            down_path = target_path.relative_to(common_prefix)
+            dots = "." * (up_levels + 1)
+            path_parts = str(down_path).replace("\\", "/").split("/")
+            path_parts[-1] = path_parts[-1][:-3]  # Remove .py extension
+            return dots + ".".join(path_parts)
 
 class ExportFormat(str, Enum):
     """Export format options."""
@@ -441,6 +448,10 @@ class ImportInfo:
     is_used: bool = False
     lineno: int = 0
 
+    def __str__(self) -> str:
+        """Return just the import name."""
+        return self.name
+
 
 @dataclass
 class ImportStats:
@@ -493,7 +504,6 @@ class ImportStats:
         
         if not is_valid:
             self.invalid_imports_count += 1
-            return
             
         if not is_used:
             self.unused_imports_count += 1

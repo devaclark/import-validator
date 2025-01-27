@@ -51,7 +51,7 @@ class ImportValidatorConfig:
         # Convert base_dir to absolute path
         self.base_dir = Path(self.base_dir).absolute()
 
-        # Set default source and test directories if not provided
+        # Set default source directory if not provided
         if self.src_dir is None:
             self.src_dir = self.base_dir / "src"
         else:
@@ -59,9 +59,8 @@ class ImportValidatorConfig:
             if not self.src_dir.is_absolute():
                 self.src_dir = self.base_dir / self.src_dir
 
-        if self.tests_dir is None:
-            self.tests_dir = self.base_dir / "tests"
-        else:
+        # Only convert tests_dir to absolute path if provided
+        if self.tests_dir is not None:
             self.tests_dir = Path(self.tests_dir)
             if not self.tests_dir.is_absolute():
                 self.tests_dir = self.base_dir / self.tests_dir

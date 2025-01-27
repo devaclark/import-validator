@@ -12,6 +12,7 @@ import networkx as nx
 import re
 import os
 import random
+import uuid
 
 from .async_utils import find_python_files_async, parse_ast_threaded, read_file_async, file_exists_async, get_installed_packages
 from .error_handling import ValidationError
@@ -29,25 +30,24 @@ logger = logging.getLogger('validator.core')
 class AsyncImportValidator:
     """Asynchronous import validator."""
 
-    def __init__(self, config: ImportValidatorConfig, fs: Optional[FileSystemInterface] = None):
-        """Initialize validator.
-
-        Args:
-            config: Validator configuration
-            fs: Optional file system interface
-        """
+    def __init__(self, config: ImportValidatorConfig, fs: FileSystemInterface):
+        """Initialize the validator."""
         self.config = config
-        self.fs = fs or DefaultFileSystem()
+        self.fs = fs
+        self.base_dir = Path(config.base_dir).resolve()
+        self.src_dir = Path(config.src_dir).resolve()
+        self.tests_dir = Path(config.tests_dir).resolve() if config.tests_dir is not None else None
+        self.valid_packages = config.valid_packages
+        self.stdlib_modules = set(sys.stdlib_module_names)
+        self.installed_packages = self.stdlib_modules.copy()  # Initialize with stdlib modules
+        self.import_relationships: Dict[str, ImportRelationship] = {}
+        self.file_statuses: Dict[str, FileStatus] = {}
+        self.import_graph = nx.DiGraph()
+        self.trace_id = str(uuid.uuid4())
         self.logger = logging.getLogger('import_validator')
-        self.trace_id = hex(random.getrandbits(32))[2:10]  # Generate a short trace ID
         self.validation_pass = 0  # Track validation pass number
         
         logger.debug(f"[Trace: {self.trace_id}] Initializing validator instance")
-        
-        # Convert paths to absolute paths and ensure they are Path objects
-        self.base_dir = Path(config.base_dir).resolve()
-        self.src_dir = Path(config.src_dir).resolve()
-        self.tests_dir = Path(config.tests_dir).resolve() if config.tests_dir else None
         
         # Initialize path handling
         self.path_normalizer = PathNormalizer(
@@ -57,19 +57,11 @@ class AsyncImportValidator:
         )
         
         # Track file statuses
-        self.file_statuses: Dict[str, FileStatus] = {}
         self.missing_files: Set[str] = set()
         self.invalid_files: Set[str] = set()
         
         # Initialize import tracking
         self.module_definitions = {}
-        self.import_graph = nx.DiGraph()
-        self.import_relationships: Dict[str, ImportRelationship] = {}
-        
-        # Initialize package tracking
-        self.stdlib_modules = set(sys.stdlib_module_names)
-        self.installed_packages = self.stdlib_modules.copy()
-        self.valid_packages = set()  # Track third-party packages separately
         self.package_to_modules = {}  # Track which modules each package provides
 
         # Set source directories
@@ -171,36 +163,51 @@ class AsyncImportValidator:
         self.logger.info(f"Installed packages: {len(self.installed_packages)}")
 
     def get_file_status(self, file_path: str) -> FileStatus:
-        """Get detailed status information about a file."""
-        normalized_path = self.path_normalizer.normalize(file_path)
-        if normalized_path not in self.file_statuses:
-            self.file_statuses[normalized_path] = FileStatus(
-                path=normalized_path,
-                exists=os.path.exists(normalized_path),
-                is_test=self.path_normalizer.is_test_file(normalized_path),
-                import_count=len(self.import_relationships.get(normalized_path, {}).imports),
-                invalid_imports=len(self.import_relationships.get(normalized_path, {}).invalid_imports),
-                circular_refs=len(self.import_relationships.get(normalized_path, {}).circular_refs),
-                relative_imports=len(self.import_relationships.get(normalized_path, {}).relative_imports)
-            )
-        return self.file_statuses[normalized_path]
+        """Get status for a file."""
+        normalized_path = file_path
+        if Path(file_path).exists():
+            normalized_path = str(Path(file_path).resolve())
+        
+        # Return existing status if found
+        if normalized_path in self.file_statuses:
+            return self.file_statuses[normalized_path]
+        
+        # Get relationship if exists
+        relationship = self.import_relationships.get(normalized_path)
+        
+        # Create new status for unknown file
+        return FileStatus(
+            path=file_path,  # Use original path for unknown files
+            exists=False,
+            is_test=False,
+            import_count=len(relationship.imports) if relationship else 0,
+            invalid_imports=len(relationship.invalid_imports) if relationship else 0,
+            circular_refs=len(relationship.circular_refs) if relationship else 0,
+            relative_imports=len(relationship.relative_imports) if relationship else 0
+        )
 
     def get_import_details(self, file_path: str) -> ImportRelationship:
-        """Get detailed import relationship information for a file."""
-        normalized_path = self.path_normalizer.normalize(file_path)
-        if normalized_path not in self.import_relationships:
-            self.import_relationships[normalized_path] = ImportRelationship(
-                file_path=normalized_path,
-                imports=set(),
-                imported_by=set(),
-                invalid_imports=set(),
-                relative_imports=set(),
-                circular_refs=set(),
-                stdlib_imports=set(),
-                thirdparty_imports=set(),
-                local_imports=set()
-            )
-        return self.import_relationships[normalized_path]
+        """Get import details for a file."""
+        normalized_path = file_path
+        if Path(file_path).exists():
+            normalized_path = str(Path(file_path).resolve())
+        
+        # Return existing relationship if found
+        if normalized_path in self.import_relationships:
+            return self.import_relationships[normalized_path]
+        
+        # Create new relationship for unknown file
+        return ImportRelationship(
+            file_path=file_path,  # Use original path for unknown files
+            imports=set(),
+            imported_by=set(),
+            invalid_imports=set(),
+            relative_imports=set(),
+            circular_refs=set(),
+            stdlib_imports=set(),
+            thirdparty_imports=set(),
+            local_imports=set()
+        )
 
     def update_import_relationship(self, source: str, target: str, import_type: str):
         """Update import relationship tracking."""
@@ -299,27 +306,15 @@ class AsyncImportValidator:
             return "#ffe66d"  # Yellow for third-party imports
         return "#51cf66"  # Green for local imports
 
-    def get_node_details(self, file_path: str) -> Dict[str, Any]:
-        """Get detailed information about a node for the details panel."""
+    def get_node_details(self, file_path: str) -> Dict[str, Union[str, int, bool]]:
+        """Get details about a node for visualization."""
         status = self.get_file_status(file_path)
-        relationship = self.get_import_details(file_path)
-        
         return {
-            "path": file_path,
-            "exists": status.exists,
-            "type": "Test File" if status.is_test else "Source File",
-            "status": "Missing" if not status.exists else "Valid",
-            "imports": {
-                "total": status.import_count,
-                "invalid": len(relationship.invalid_imports),
-                "relative": len(relationship.relative_imports),
-                "stdlib": len(relationship.stdlib_imports),
-                "thirdparty": len(relationship.thirdparty_imports),
-                "local": len(relationship.local_imports)
-            },
-            "imported_by": list(relationship.imported_by),
-            "circular_references": list(relationship.circular_refs),
-            "issues": self._get_file_issues(file_path)
+            "path": status.path,
+            "imports": status.import_count,
+            "invalid_imports": status.invalid_imports,
+            "relative_imports": status.relative_imports,
+            "is_test": status.is_test
         }
 
     def _get_file_issues(self, file_path: str) -> List[Dict[str, str]]:
@@ -594,139 +589,54 @@ class AsyncImportValidator:
             logger.error(f"[Trace: {self.trace_id}] Error finding module path for '{module_name}': {e}", exc_info=True)
             return None
 
-    def _classify_import(self, import_name: str, current_file: Union[str, Path]) -> str:
-        """Classify an import as stdlib, thirdparty, local, or invalid.
+    def _classify_import(self, import_name: str, file_path: str) -> str:
+        """Classify an import as stdlib, thirdparty, local, or relative."""
+        # Handle relative imports first
+        if import_name.startswith('.'):
+            return "relative"
         
-        Args:
-            import_name: Name of the import to classify
-            current_file: Path of file containing the import
-            
-        Returns:
-            Classification as 'stdlib', 'thirdparty', 'local', or 'invalid'
-        """
-        try:
-            # Handle src/tests base modules
-            if import_name.startswith(('src.', 'tests.')):
-                logger.debug(f"[Trace: {self.trace_id}] Import '{import_name}' classified as local (src/tests)")
-                return 'local'
-                
-            # Handle relative imports as local
-            if import_name.startswith('.'):
-                logger.debug(f"[Trace: {self.trace_id}] Import '{import_name}' classified as local (relative)")
-                return 'local'
-                
-            # Get base module name (before any dots)
-            base_module = import_name.split('.')[0]
-            logger.debug(f"[Trace: {self.trace_id}] Base module: '{base_module}'")
-            
-            # Check if base module itself is src or tests
-            if base_module in ('src', 'tests'):
-                logger.debug(f"[Trace: {self.trace_id}] Import '{import_name}' classified as local (src/tests base)")
-                return 'local'
-                
-            # Check if it's a standard library module
-            if base_module in self.stdlib_modules:
-                logger.debug(f"[Trace: {self.trace_id}] Import '{import_name}' classified as stdlib")
-                return 'stdlib'
-                
-            # Check if the module is directly in valid_packages
-            if base_module in self.valid_packages:
-                logger.debug(f"[Trace: {self.trace_id}] Import '{import_name}' classified as thirdparty (in valid_packages)")
-                return 'thirdparty'
-                
-            # Check if any package provides this module
-            for package, modules in self.package_to_modules.items():
-                if base_module in modules and package in self.valid_packages:
-                    logger.debug(f"[Trace: {self.trace_id}] Found module {base_module} is provided by valid package {package}")
-                    # Add the module to valid_packages since we know it's valid
-                    self.valid_packages.add(base_module)
-                    return 'thirdparty'
-                    
-            # Check if it's in installed_packages
-            if base_module in self.installed_packages:
-                logger.debug(f"[Trace: {self.trace_id}] Import '{import_name}' classified as thirdparty (in installed_packages)")
-                # Since it's installed, add it to valid_packages
-                self.valid_packages.add(base_module)
-                return 'thirdparty'
-                
-            # Try to find the package that provides this module
-            try:
-                spec = importlib.util.find_spec(base_module)
-                if spec and spec.origin:
-                    package_dir = str(Path(spec.origin).parent)
-                    while package_dir:
-                        init_path = Path(package_dir) / '__init__.py'
-                        if init_path.exists():
-                            package_name = Path(package_dir).name
-                            # Check if this package is in our valid packages
-                            if package_name in self.valid_packages:
-                                logger.debug(f"[Trace: {self.trace_id}] Found module {base_module} belongs to package {package_name}")
-                                # Add to our mappings since we found a new valid module
-                                self.package_to_modules.setdefault(package_name, set()).add(base_module)
-                                self.valid_packages.add(base_module)
-                                return 'thirdparty'
-                        parent_dir = str(Path(package_dir).parent)
-                        if parent_dir == package_dir:
-                            break
-                        package_dir = parent_dir
-            except Exception as e:
-                logger.debug(f"[Trace: {self.trace_id}] Error finding spec for {base_module}: {e}")
-                
-            # Try to find the module in the project
-            if current_file:
-                try:
-                    # Convert current_file to Path safely
-                    current_path = Path(str(current_file))
-                    module_path = current_path.parent / f"{base_module}.py"
-                    if module_path.exists():
-                        logger.debug(f"[Trace: {self.trace_id}] Found local module file: {module_path}")
-                        return 'local'
-                        
-                    # Check if it's a local package
-                    package_init = current_path.parent / base_module / '__init__.py'
-                    if package_init.exists():
-                        logger.debug(f"[Trace: {self.trace_id}] Found local package: {package_init}")
-                        return 'local'
-                except Exception as e:
-                    logger.debug(f"[Trace: {self.trace_id}] Error checking local module: {e}")
-                    
-            logger.debug(f"[Trace: {self.trace_id}] Import '{import_name}' classified as invalid")
-            return 'invalid'
-            
-        except Exception as e:
-            logger.debug(f"[Trace: {self.trace_id}] Error classifying import '{import_name}': {e}")
-            return 'invalid'
+        # Split on dots to get the root package
+        root_package = import_name.split('.')[0].lower()  # Convert to lowercase for comparison
+        
+        # Check if it's a stdlib module
+        if root_package in self.stdlib_modules:
+            return "stdlib"
+        
+        # Check if it's in valid packages (case insensitive)
+        valid_packages_lower = {pkg.lower() for pkg in self.valid_packages}
+        if root_package in valid_packages_lower:
+            return "thirdparty"
+        
+        # Check module-to-package mapping
+        if root_package in MODULE_TO_PACKAGE:
+            mapped_package = MODULE_TO_PACKAGE[root_package].lower()
+            if mapped_package in valid_packages_lower:
+                return "thirdparty"
+        
+        # Check if it's a local module
+        if self._is_local_module(import_name):
+            return "local"
+        
+        # If none of the above, it's invalid
+        return "invalid"
 
     def find_circular_references(self, results: ValidationResults) -> Dict[str, List[List[str]]]:
-        """Find circular references in the import graph.
+        """Find circular references in the import graph."""
+        # Find all cycles in the graph
+        cycles = list(nx.simple_cycles(results.import_graph))
         
-        Args:
-            results: ValidationResults object containing the import graph
-            
-        Returns:
-            Dictionary mapping file paths to lists of cycles containing that file
-        """
-        try:
-            cycles = list(nx.simple_cycles(results.import_graph))
-            if not cycles:
-                return {}
-
-            circular_refs = defaultdict(list)
-            for cycle in cycles:
-                for node in cycle:
-                    circular_refs[node].append(cycle)
-
-            # Update stats with the number of unique cycles
-            results.stats.circular_refs_count = len(cycles)
-            results.circular_references = dict(circular_refs)
-
-            return dict(circular_refs)
-        except Exception as e:
-            results.add_error(ValidationError(
-                error_type="CircularReferenceError",
-                message=f"Error finding circular references: {str(e)}"
-            ))
-            return {}
+        # Create a mapping of nodes to their cycles
+        circular_refs: Dict[str, List[List[str]]] = {}
+        
+        # Process each cycle
+        for cycle in cycles:
+            # Only add the cycle to the first node in the cycle
+            first_node = min(cycle)  # Use alphabetically first node
+            if first_node not in circular_refs:
+                circular_refs[first_node] = []
+            circular_refs[first_node].append(cycle)
+        
+        return circular_refs
 
     async def validate_all(self) -> ValidationResults:
         """Validate all Python files in the project.
@@ -820,6 +730,22 @@ class AsyncImportValidator:
             pass
             
         return False
+
+    def _is_local_module(self, import_name: str) -> bool:
+        """Check if an import is a local module."""
+        # Handle relative imports
+        if import_name.startswith('.'):
+            return True
+        
+        # Handle absolute imports
+        parts = import_name.split('.')
+        root = parts[0]
+        
+        # Check if it's a source or test module
+        return (
+            root == self.src_dir.name or
+            (self.tests_dir and root == self.tests_dir.name)
+        )
 
     def _is_valid_import(self, import_name: str) -> bool:
         """Check if an import is valid."""

@@ -1,6 +1,6 @@
 """Tests for import validator."""
 from pathlib import Path
-from unittest.mock import patch, Mock, AsyncMock
+from unittest.mock import patch, Mock, AsyncMock, MagicMock
 import pytest
 import asyncio
 import ast
@@ -12,7 +12,7 @@ from src.validator import (
     read_file_async,
     file_exists_async
 )
-from src.validator.validator_types import ImportStats, ValidationResults, ImportUsage, PathNormalizer
+from src.validator.validator_types import ImportStats, ValidationResults, ImportUsage, PathNormalizer, FileStatus, ImportRelationship
 from src.validator.config import ImportValidatorConfig
 import json
 import textwrap
@@ -142,6 +142,25 @@ def mock_validator():
     mock.validate_all = AsyncMock(return_value=results)
     
     return mock
+
+@pytest.fixture
+def mock_fs():
+    """Create a mock file system."""
+    fs = MagicMock(spec=FileSystemInterface)
+    fs.read_file = AsyncMock(return_value="")
+    fs.file_exists = AsyncMock(return_value=True)
+    fs.find_python_files = AsyncMock(return_value=set())
+    return fs
+
+@pytest.fixture
+def basic_config():
+    """Create a basic validator configuration."""
+    return ImportValidatorConfig(
+        base_dir=".",
+        src_dir="src",
+        tests_dir="tests",
+        valid_packages={"requests", "pytest", "flask", "sqlalchemy", "black", "mypy"}
+    )
 
 @pytest.mark.asyncio
 async def test_analyze_imports(mock_validator, tmp_path):
@@ -279,3 +298,280 @@ async def test_validator_error_handling(mock_validator, mock_qt, tmp_path):
     mock_validator.validate_all.side_effect = Exception("Test error")
     with pytest.raises(Exception):
         await mock_validator.validate_all()
+
+@pytest.mark.asyncio
+async def test_validator_initialization(basic_config, mock_fs):
+    """Test validator initialization."""
+    validator = AsyncImportValidator(basic_config, mock_fs)
+    await validator.initialize()
+    
+    # Check basic attributes
+    assert validator.base_dir == Path(".").resolve()
+    assert validator.src_dir == Path("src").resolve()
+    assert validator.tests_dir == Path("tests").resolve()
+    assert validator.fs == mock_fs
+    
+    # Check package tracking
+    assert "requests" in validator.valid_packages
+    assert "flask" in validator.valid_packages
+    assert "black" in validator.valid_packages
+    assert "os" in validator.stdlib_modules
+    assert "sys" in validator.stdlib_modules
+
+@pytest.mark.asyncio
+async def test_validator_without_tests_dir(mock_fs):
+    """Test validator initialization without tests directory."""
+    config = ImportValidatorConfig(
+        base_dir=".",
+        src_dir="src",
+        tests_dir=None,
+        valid_packages=set()
+    )
+    validator = AsyncImportValidator(config, mock_fs)
+    await validator.initialize()
+    
+    assert validator.base_dir == Path(".").resolve()
+    assert validator.src_dir == Path("src").resolve()
+    assert validator.tests_dir is None
+    assert len(validator.source_dirs) == 1
+    assert validator.source_dirs[0] == validator.src_dir
+
+@pytest.mark.asyncio
+async def test_validator_file_status(basic_config, mock_fs):
+    """Test file status tracking."""
+    validator = AsyncImportValidator(basic_config, mock_fs)
+    await validator.initialize()
+    
+    # Add a file status
+    validator.file_statuses["src/module.py"] = FileStatus(
+        path="src/module.py",
+        exists=True,
+        is_test=False,
+        import_count=5,
+        invalid_imports=1,
+        circular_refs=0,
+        relative_imports=2
+    )
+    
+    # Test get_file_status
+    status = validator.get_file_status("src/module.py")
+    assert status.path == "src/module.py"
+    assert status.exists
+    assert not status.is_test
+    assert status.import_count == 5
+    assert status.invalid_imports == 1
+    assert status.circular_refs == 0
+    assert status.relative_imports == 2
+    
+    # Test get_file_status for unknown file
+    unknown_status = validator.get_file_status("unknown.py")
+    assert unknown_status.path == "unknown.py"
+    assert not unknown_status.exists
+    assert unknown_status.import_count == 0
+
+@pytest.mark.asyncio
+async def test_validator_import_relationships(basic_config, mock_fs):
+    """Test import relationship tracking."""
+    validator = AsyncImportValidator(basic_config, mock_fs)
+    await validator.initialize()
+    
+    # Add an import relationship
+    validator.import_relationships["src/module.py"] = ImportRelationship(
+        file_path="src/module.py",
+        imports={"os", "sys"},
+        imported_by={"main.py"},
+        invalid_imports={"invalid_module"},
+        relative_imports={".utils"},
+        circular_refs=set(),
+        stdlib_imports={"os", "sys"},
+        thirdparty_imports=set(),
+        local_imports=set()
+    )
+    
+    # Test get_import_details
+    details = validator.get_import_details("src/module.py")
+    assert details.file_path == "src/module.py"
+    assert "os" in details.imports
+    assert "sys" in details.imports
+    assert "main.py" in details.imported_by
+    assert "invalid_module" in details.invalid_imports
+    assert ".utils" in details.relative_imports
+    assert "os" in details.stdlib_imports
+    assert "sys" in details.stdlib_imports
+    
+    # Test get_import_details for unknown file
+    unknown_details = validator.get_import_details("unknown.py")
+    assert unknown_details.file_path == "unknown.py"
+    assert len(unknown_details.imports) == 0
+    assert len(unknown_details.imported_by) == 0
+
+@pytest.mark.asyncio
+async def test_validator_graph_visualization(basic_config, mock_fs):
+    """Test graph visualization helpers."""
+    validator = AsyncImportValidator(basic_config, mock_fs)
+    await validator.initialize()
+    
+    # Add some file statuses and relationships
+    validator.file_statuses["src/module.py"] = FileStatus(
+        path="src/module.py",
+        exists=True,
+        is_test=False,
+        import_count=2,
+        invalid_imports=1,
+        circular_refs=0,
+        relative_imports=0
+    )
+    
+    validator.import_relationships["src/module.py"] = ImportRelationship(
+        file_path="src/module.py",
+        imports={"os"},
+        imported_by=set(),
+        invalid_imports={"invalid"},
+        relative_imports=set(),
+        circular_refs=set(),
+        stdlib_imports={"os"},
+        thirdparty_imports=set(),
+        local_imports=set()
+    )
+    
+    # Test node color
+    color = validator.get_node_color("src/module.py")
+    assert isinstance(color, str)
+    assert len(color) > 0
+    
+    # Test edge color
+    edge_color = validator.get_edge_color("src/module.py", "os")
+    assert isinstance(edge_color, str)
+    assert len(edge_color) > 0
+    
+    # Test node details
+    details = validator.get_node_details("src/module.py")
+    assert isinstance(details, dict)
+    assert details["path"] == "src/module.py"
+    assert details["imports"] == 2
+    assert details["invalid_imports"] == 1
+    assert details["relative_imports"] == 0
+    assert details["is_test"] is False
+
+@pytest.mark.asyncio
+async def test_validator_stdlib_detection(basic_config, mock_fs):
+    """Test standard library module detection."""
+    validator = AsyncImportValidator(basic_config, mock_fs)
+    await validator.initialize()
+    
+    # Test standard library modules
+    assert validator.is_stdlib_module("os")
+    assert validator.is_stdlib_module("sys")
+    assert validator.is_stdlib_module("typing")
+    assert validator.is_stdlib_module("pathlib")
+    assert validator.is_stdlib_module("unittest")
+    
+    # Test non-standard library modules
+    assert not validator.is_stdlib_module("requests")
+    assert not validator.is_stdlib_module("flask")
+    assert not validator.is_stdlib_module("nonexistent_module")
+    assert not validator.is_stdlib_module("my_local_module")
+
+@pytest.mark.asyncio
+async def test_validator_import_classification(basic_config, mock_fs):
+    """Test import classification."""
+    validator = AsyncImportValidator(basic_config, mock_fs)
+    await validator.initialize()
+    
+    # Test standard library imports
+    assert validator._classify_import("os", "src/module.py") == "stdlib"
+    assert validator._classify_import("sys.path", "src/module.py") == "stdlib"
+    assert validator._classify_import("typing.List", "src/module.py") == "stdlib"
+    
+    # Test third-party imports
+    assert validator._classify_import("requests", "src/module.py") == "thirdparty"
+    assert validator._classify_import("flask.Flask", "src/module.py") == "thirdparty"
+    assert validator._classify_import("black.format", "src/module.py") == "thirdparty"
+    
+    # Test local imports
+    assert validator._classify_import("src.module", "src/other.py") == "local"
+    assert validator._classify_import("tests.test_module", "tests/other.py") == "local"
+    
+    # Test relative imports
+    assert validator._classify_import(".utils", "src/module.py") == "relative"
+    assert validator._classify_import("..module", "src/pkg/module.py") == "relative"
+
+@pytest.mark.asyncio
+async def test_validator_relative_import_resolution(basic_config, mock_fs):
+    """Test relative import resolution."""
+    validator = AsyncImportValidator(basic_config, mock_fs)
+    await validator.initialize()
+    
+    # Test same directory relative import
+    result = validator.resolve_relative_import(
+        ".utils",
+        "src/package/module.py"
+    )
+    assert result == "src/package/utils.py"
+    
+    # Test parent directory relative import
+    result = validator.resolve_relative_import(
+        "..other",
+        "src/package/subdir/module.py"
+    )
+    assert result == "src/package/other.py"
+    
+    # Test multiple levels up
+    result = validator.resolve_relative_import(
+        "...module",
+        "src/a/b/c/module.py"
+    )
+    assert result == "src/a/module.py"
+    
+    # Test with explicit module name
+    result = validator.resolve_relative_import(
+        ".submodule",
+        "src/package/module.py",
+        "package.submodule"
+    )
+    assert result == "src/package/submodule.py"
+
+@pytest.mark.asyncio
+async def test_validator_import_validation(basic_config, mock_fs):
+    """Test import validation."""
+    validator = AsyncImportValidator(basic_config, mock_fs)
+    await validator.initialize()
+    
+    # Test valid imports
+    assert validator._is_valid_import("os")  # stdlib
+    assert validator._is_valid_import("sys.path")  # stdlib with attribute
+    assert validator._is_valid_import("requests")  # third-party
+    assert validator._is_valid_import("flask.Flask")  # third-party with attribute
+    assert validator._is_valid_import("src.module")  # local
+    assert validator._is_valid_import(".utils")  # relative
+    
+    # Test invalid imports
+    assert not validator._is_valid_import("nonexistent_module")
+    assert not validator._is_valid_import("unknown_package.module")
+    assert not validator._is_valid_import("")
+    assert not validator._is_valid_import("   ")
+
+@pytest.mark.asyncio
+async def test_validator_circular_reference_detection(basic_config, mock_fs):
+    """Test circular reference detection."""
+    validator = AsyncImportValidator(basic_config, mock_fs)
+    await validator.initialize()
+    
+    # Create a graph with circular references
+    validator.import_graph.add_edge("a.py", "b.py")
+    validator.import_graph.add_edge("b.py", "c.py")
+    validator.import_graph.add_edge("c.py", "a.py")  # Creates cycle
+    validator.import_graph.add_edge("d.py", "e.py")  # No cycle
+    
+    # Create validation results
+    results = ValidationResults()
+    results.import_graph = validator.import_graph
+    
+    # Find circular references
+    circles = validator.find_circular_references(results)
+    
+    # Verify results
+    assert len(circles) == 1  # One cycle found
+    cycle = next(iter(circles.values()))[0]  # Get the first cycle
+    assert len(cycle) == 3  # Cycle length is 3
+    assert set(cycle) == {"a.py", "b.py", "c.py"}  # Cycle members

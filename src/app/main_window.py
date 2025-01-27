@@ -21,6 +21,7 @@ from ..validator.validator import AsyncImportValidator
 from .web_bridge import WebBridge
 from .code_editor import CodeEditor
 from .ui_components import DARK_THEME, SPLITTER_STYLE
+from ..validator.default_file_system import DefaultFileSystem
 # Set up logging using centralized configuration
 logger = logging.getLogger(__name__)
 
@@ -888,7 +889,8 @@ class ImportValidatorApp:
                 
                 # Initialize validator
                 logger.debug("Initializing validator")
-                self.validator = AsyncImportValidator(config=config)
+                fs = DefaultFileSystem()
+                self.validator = AsyncImportValidator(config=config, fs=fs)
                 await self.validator.initialize()
                 logger.debug("Successfully initialized validator")
                 

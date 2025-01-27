@@ -1,9 +1,69 @@
-2025-01-26 22:53:13,203 - validator.config - ERROR - Error parsing requirements.txt: Read error
-2025-01-26 22:53:13,203 - validator.config - ERROR - Error parsing requirements.txt: Read error
-2025-01-26 22:53:13,207 - validator.config - DEBUG - Found tool poetry dependencies: dict_keys(['networkx', 'rich', 'pydantic'])
-2025-01-26 22:53:13,207 - validator.config - DEBUG - Found dev dependencies: dict_keys([])
-2025-01-26 22:53:13,207 - validator.config - DEBUG - Found dependencies in pyproject.toml: {'networkx', 'pydantic', 'rich'}
-2025-01-26 22:53:13,208 - validator.config - DEBUG - Found tool poetry dependencies: dict_keys(['networkx', 'rich', 'pydantic'])
-2025-01-26 22:53:13,208 - validator.config - DEBUG - Found dev dependencies: dict_keys([])
-2025-01-26 22:53:13,208 - validator.config - DEBUG - Found dependencies in pyproject.toml: {'networkx', 'pydantic', 'rich'}
- - validator.config - DEBUG - Found dependencies in pyproject.toml: {'networkx', 'pydantic', 'rich'}
+2025-01-26 23:43:52,197 - validator.core - DEBUG - [Trace: c958c5d7-32b7-4329-b6a1-eb7eb75beab1] Initializing validator instance
+2025-01-26 23:43:52,197 - validator.core - DEBUG - Initializing validator for project: C:\Source\import-validator
+2025-01-26 23:43:52,200 - validator.core - DEBUG - Found modules {'py', '_pytest', 'pytest'} from top_level.txt for package pytest
+2025-01-26 23:43:52,206 - validator.core - DEBUG - Initialized with 8 valid packages
+2025-01-26 23:43:52,206 - validator.core - DEBUG - Valid packages: ['_pytest', 'black', 'flask', 'mypy', 'py', 'pytest', 'requests', 'sqlalchemy']
+2025-01-26 23:43:52,206 - validator.core - DEBUG - Package to modules mapping: {'pytest': {'py', '_pytest', 'pytest'}}
+2025-01-26 23:43:52,282 - validator.core - DEBUG - [Trace: b18b4a2b-a356-4bc6-a406-3db6bbe0f3d7] Initializing validator instance
+2025-01-26 23:43:52,282 - validator.core - DEBUG - Initializing validator for project: C:\Source\import-validator
+2025-01-26 23:43:52,283 - validator.core - DEBUG - Found modules {'py', '_pytest', 'pytest'} from top_level.txt for package pytest
+2025-01-26 23:43:52,288 - validator.core - DEBUG - Initialized with 8 valid packages
+2025-01-26 23:43:52,288 - validator.core - DEBUG - Valid packages: ['_pytest', 'black', 'flask', 'mypy', 'py', 'pytest', 'requests', 'sqlalchemy']
+2025-01-26 23:43:52,288 - validator.core - DEBUG - Package to modules mapping: {'pytest': {'py', '_pytest', 'pytest'}}
+2025-01-26 23:43:52,319 - validator.core - DEBUG - [Trace: 284feb8e-e8ba-4873-9948-fd53a964ec55] Initializing validator instance
+2025-01-26 23:43:52,319 - validator.core - DEBUG - Initializing validator for project: C:\Source\import-validator
+2025-01-26 23:43:52,321 - validator.core - DEBUG - Found modules {'py', '_pytest', 'pytest'} from top_level.txt for package pytest
+2025-01-26 23:43:52,326 - validator.core - DEBUG - Initialized with 8 valid packages
+2025-01-26 23:43:52,326 - validator.core - DEBUG - Valid packages: ['_pytest', 'black', 'flask', 'mypy', 'py', 'pytest', 'requests', 'sqlalchemy']
+2025-01-26 23:43:52,326 - validator.core - DEBUG - Package to modules mapping: {'pytest': {'py', '_pytest', 'pytest'}}
+2025-01-26 23:43:52,331 - validator.core - DEBUG - [Trace: 67a267b5-57af-4b42-b093-1dffe79c97cd] Initializing validator instance
+2025-01-26 23:43:52,331 - validator.core - DEBUG - Initializing validator for project: C:\Source\import-validator
+2025-01-26 23:43:52,331 - validator.core - DEBUG - Initialized with 0 valid packages
+2025-01-26 23:43:52,331 - validator.core - DEBUG - Valid packages: []
+2025-01-26 23:43:52,331 - validator.core - DEBUG - Package to modules mapping: {}
+2025-01-26 23:43:52,336 - validator.core - DEBUG - [Trace: 18db8758-4726-43e0-9421-4433a09995bd] Initializing validator instance
+2025-01-26 23:43:52,336 - validator.core - DEBUG - Initializing validator for project: C:\Source\import-validator
+2025-01-26 23:43:52,338 - validator.core - DEBUG - Found modules {'py', '_pytest', 'pytest'} from top_level.txt for package pytest
+2025-01-26 23:43:52,343 - validator.core - DEBUG - Initialized with 8 valid packages
+2025-01-26 23:43:52,343 - validator.core - DEBUG - Valid packages: ['_pytest', 'black', 'flask', 'mypy', 'py', 'pytest', 'requests', 'sqlalchemy']
+2025-01-26 23:43:52,343 - validator.core - DEBUG - Package to modules mapping: {'pytest': {'py', '_pytest', 'pytest'}}
+2025-01-26 23:43:52,395 - validator.core - DEBUG - [Trace: 8bcbf23d-2815-459b-ac61-12f26eb649ce] Initializing validator instance
+2025-01-26 23:43:52,396 - validator.core - DEBUG - Initializing validator for project: C:\Source\import-validator
+2025-01-26 23:43:52,398 - validator.core - DEBUG - Found modules {'py', '_pytest', 'pytest'} from top_level.txt for package pytest
+2025-01-26 23:43:52,403 - validator.core - DEBUG - Initialized with 8 valid packages
+2025-01-26 23:43:52,403 - validator.core - DEBUG - Valid packages: ['_pytest', 'black', 'flask', 'mypy', 'py', 'pytest', 'requests', 'sqlalchemy']
+2025-01-26 23:43:52,403 - validator.core - DEBUG - Package to modules mapping: {'pytest': {'py', '_pytest', 'pytest'}}
+2025-01-26 23:43:52,442 - validator.core - DEBUG - [Trace: 479c138a-760f-4f6b-9548-35b82d3eadde] Initializing validator instance
+2025-01-26 23:43:52,442 - validator.core - DEBUG - Initializing validator for project: C:\Source\import-validator
+2025-01-26 23:43:52,443 - validator.core - DEBUG - Found modules {'py', '_pytest', 'pytest'} from top_level.txt for package pytest
+2025-01-26 23:43:52,447 - validator.core - DEBUG - Initialized with 8 valid packages
+2025-01-26 23:43:52,447 - validator.core - DEBUG - Valid packages: ['_pytest', 'black', 'flask', 'mypy', 'py', 'pytest', 'requests', 'sqlalchemy']
+2025-01-26 23:43:52,447 - validator.core - DEBUG - Package to modules mapping: {'pytest': {'py', '_pytest', 'pytest'}}
+2025-01-26 23:43:52,459 - validator.core - DEBUG - [Trace: 41e76814-a5c7-42f1-b701-0c093d436777] Initializing validator instance
+2025-01-26 23:43:52,459 - validator.core - DEBUG - Initializing validator for project: C:\Source\import-validator
+2025-01-26 23:43:52,461 - validator.core - DEBUG - Found modules {'py', '_pytest', 'pytest'} from top_level.txt for package pytest
+2025-01-26 23:43:52,465 - validator.core - DEBUG - Initialized with 8 valid packages
+2025-01-26 23:43:52,465 - validator.core - DEBUG - Valid packages: ['_pytest', 'black', 'flask', 'mypy', 'py', 'pytest', 'requests', 'sqlalchemy']
+2025-01-26 23:43:52,465 - validator.core - DEBUG - Package to modules mapping: {'pytest': {'py', '_pytest', 'pytest'}}
+2025-01-26 23:43:52,489 - validator.core - DEBUG - [Trace: d4d9224c-7f67-4d10-9601-b512b7ff2efd] Initializing validator instance
+2025-01-26 23:43:52,489 - validator.core - DEBUG - Initializing validator for project: C:\Source\import-validator
+2025-01-26 23:43:52,491 - validator.core - DEBUG - Found modules {'py', '_pytest', 'pytest'} from top_level.txt for package pytest
+2025-01-26 23:43:52,496 - validator.core - DEBUG - Initialized with 8 valid packages
+2025-01-26 23:43:52,496 - validator.core - DEBUG - Valid packages: ['_pytest', 'black', 'flask', 'mypy', 'py', 'pytest', 'requests', 'sqlalchemy']
+2025-01-26 23:43:52,496 - validator.core - DEBUG - Package to modules mapping: {'pytest': {'py', '_pytest', 'pytest'}}
+2025-01-26 23:43:52,510 - validator.core - DEBUG - [Trace: fd5dd8ea-9973-4614-811d-c639b37fce0b] Initializing validator instance
+2025-01-26 23:43:52,510 - validator.core - DEBUG - Initializing validator for project: C:\Source\import-validator
+2025-01-26 23:43:52,515 - validator.core - DEBUG - Found modules {'py', '_pytest', 'pytest'} from top_level.txt for package pytest
+2025-01-26 23:43:52,519 - validator.core - DEBUG - Initialized with 8 valid packages
+2025-01-26 23:43:52,519 - validator.core - DEBUG - Valid packages: ['_pytest', 'black', 'flask', 'mypy', 'py', 'pytest', 'requests', 'sqlalchemy']
+2025-01-26 23:43:52,519 - validator.core - DEBUG - Package to modules mapping: {'pytest': {'py', '_pytest', 'pytest'}}
+2025-01-26 23:43:53,951 - validator.config - DEBUG - Found tool poetry dependencies: dict_keys(['networkx', 'rich', 'pydantic'])
+2025-01-26 23:43:53,951 - validator.config - DEBUG - Found dev dependencies: dict_keys([])
+2025-01-26 23:43:53,951 - validator.config - DEBUG - Found dependencies in pyproject.toml: {'networkx', 'pydantic', 'rich'}
+2025-01-26 23:43:53,951 - validator.config - DEBUG - Found tool poetry dependencies: dict_keys(['networkx', 'rich', 'pydantic'])
+2025-01-26 23:43:53,951 - validator.config - DEBUG - Found dev dependencies: dict_keys([])
+2025-01-26 23:43:53,951 - validator.config - DEBUG - Found dependencies in pyproject.toml: {'networkx', 'pydantic', 'rich'}
+2025-01-26 23:43:53,960 - validator.config - ERROR - Error parsing requirements.txt: Read error
+2025-01-26 23:43:53,960 - validator.config - ERROR - Error parsing requirements.txt: Read error
+ng requirements.txt: Read error
+2025-01-26 23:43:53,960 - validator.config - ERROR - Error parsing requirements.txt: Read error
