@@ -105,6 +105,9 @@ class ImportValidatorConfig:
         if not package_spec:
             return ''
             
+        # Remove environment markers (e.g., "; python_version >= '3.8'")
+        package_spec = package_spec.split(';')[0].strip()
+            
         # Remove version specifiers and extras
         package_name = package_spec.split('[')[0]  # Remove extras
         package_name = package_name.split('>=')[0]  # Remove >= version
@@ -116,8 +119,8 @@ class ImportValidatorConfig:
         package_name = package_name.split('<')[0]   # Remove < version
         package_name = package_name.split('^')[0]   # Remove ^ version (used by poetry)
         
-        # Clean up any remaining whitespace
-        package_name = package_name.strip()
+        # Clean up any remaining whitespace and quotes
+        package_name = package_name.strip().strip('"\'')
         
         # Preserve original case
         return package_name

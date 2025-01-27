@@ -129,6 +129,20 @@ def mock_file_content(request):
     # Default content - return empty string for other tests
     return ""
 
+@pytest.fixture
+def mock_validator():
+    """Create a mock validator."""
+    mock = AsyncMock()
+    mock.find_module_path = AsyncMock(return_value=None)
+    mock.analyze_imports = AsyncMock(return_value=[])  # Return empty list instead of ImportStats
+    
+    # Create a ValidationResults object for validate_all
+    results = ValidationResults()
+    results.stats = ImportStats()
+    mock.validate_all = AsyncMock(return_value=results)
+    
+    return mock
+
 @pytest.mark.asyncio
 async def test_analyze_imports(mock_validator, tmp_path):
     """Test analyzing imports from a Python file."""

@@ -1,0 +1,9 @@
+2025-01-26 22:53:13,203 - validator.config - ERROR - Error parsing requirements.txt: Read error
+2025-01-26 22:53:13,203 - validator.config - ERROR - Error parsing requirements.txt: Read error
+2025-01-26 22:53:13,207 - validator.config - DEBUG - Found tool poetry dependencies: dict_keys(['networkx', 'rich', 'pydantic'])
+2025-01-26 22:53:13,207 - validator.config - DEBUG - Found dev dependencies: dict_keys([])
+2025-01-26 22:53:13,207 - validator.config - DEBUG - Found dependencies in pyproject.toml: {'networkx', 'pydantic', 'rich'}
+2025-01-26 22:53:13,208 - validator.config - DEBUG - Found tool poetry dependencies: dict_keys(['networkx', 'rich', 'pydantic'])
+2025-01-26 22:53:13,208 - validator.config - DEBUG - Found dev dependencies: dict_keys([])
+2025-01-26 22:53:13,208 - validator.config - DEBUG - Found dependencies in pyproject.toml: {'networkx', 'pydantic', 'rich'}
+ - validator.config - DEBUG - Found dependencies in pyproject.toml: {'networkx', 'pydantic', 'rich'}
